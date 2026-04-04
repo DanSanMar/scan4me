@@ -1,0 +1,22 @@
+# --- Reportes y Salidas de Escaneo ---
+# Bloquea cualquier carpeta de resultados para no subir datos de auditorías reales
+reports/
+results/
+*.xml
+*.nmap
+*.gnmap
+*.txt
+*.log
+
+# --- Archivos del Sistema y Editores ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~
+
+# --- Archivos Temporales y Backups ---
+tmp/
+*.bak
+*.tmp
