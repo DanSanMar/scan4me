@@ -70,8 +70,11 @@ sudo ./nmap4me.sh example.com
 Flujo de Trabajo
 Verificación: El script comprobará si eres root, si las herramientas están instaladas y si el objetivo es alcanzable.
 Menú Interactivo: Se desplegará un menú donde podrás seleccionar el tipo de escaneo.
+
 Configuración XML: Puedes activar/desactivar la generación de archivos XML desde la opción 0.
+
 Resultados: Los resultados se guardarán automáticamente en una carpeta llamada Auditoria_<TARGET> y se appendearán a un archivo Auditoria_Completa_<TARGET>.txt.
+
 🧩 Opciones del Menú
 Opción	Descripción	Comando Subyacente
 0	Toggle XML	Activa/Desactiva guardado en .xml
@@ -85,25 +88,11 @@ Opción	Descripción	Comando Subyacente
 8	WhatWeb	whatweb -a 1 -t 1 -v ...
 9	Feroxbuster (Dir Brute)	feroxbuster --url <url> --wordlist ...
 10	Salir	Cierra el script
-📂 Estructura de Archivos Generados
-Al finalizar los escaneos, se creará una carpeta con el nombre Auditoria_<TARGET>:
-
-Auditoria_192.168.1.1/
-├── Auditoria_Completa_192.168.1.1.txt  # Log consolidado en texto
-├── nmap_192.168.1.1_143022.xml         # (Opcional) Resultado Nmap en XML
-└── web_recon_192.168.1.1_143025.xml    # (Opcional) Resultado Web Recon en XML
 
 ⚠️ Advertencias de Seguridad
 Uso Ético: Esta herramienta está diseñada únicamente para auditorías de seguridad autorizadas. El escaneo de redes o sistemas sin permiso explícito es ilegal en muchas jurisdicciones.
 Privilegios Root: Requiere ejecución como root para acceder a todas las funcionalidades de Nmap (como detección de SO y escaneos SYN).
 Ruido en la Red: Algunos escaneos (especialmente UDP y brute-force con Feroxbuster) pueden generar mucho tráfico y ser detectados por sistemas IDS/IPS.
-🤝 Contribuir
-Las contribuciones son bienvenidas. Si encuentras un bug o tienes una sugerencia de mejora:
 
-Haz un Fork del proyecto.
-Crea una rama para tu característica (git checkout -b feature/AmazingFeature).
-Commit tus cambios (git commit -m 'Add some AmazingFeature').
-Push a la rama (git push origin feature/AmazingFeature).
-Abre un Pull Request.
 📄 Licencia
 Este proyecto está bajo la Licencia MIT. Consulta el archivo LICENSE para más detalles.
