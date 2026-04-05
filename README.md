@@ -1,4 +1,4 @@
-# 🔍 Scan4Me (nmap4me v2.0) - ALL 4 ME
+# 🔍 Scan4Me (nmap4me v3.0) - ALL 4 ME
 
 ![Status](https://img.shields.io/badge/Status-Stable-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-blue)
