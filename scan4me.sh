@@ -29,14 +29,14 @@ function mostrar_logo() {
     echo "     ╚═╝  ╚═╝╚══════╝╚══════╝      ╚═╝╚═╝     ╚═╝╚══════╝"
     echo ""
     echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░"
-    echo -e "${AZUL}──[ Escaneo Interactivo de Red con multiherramientas| v2.0 Feroxbuster + SectList ]──${RESET}"
+    echo -e "${AZUL}──[ Escaneo Interactivo de Red con multiherramientas| v3.0 Feroxbuster + SectList + wpscan ]──${RESET}"
     echo ""
 }
 
 function despedida() {
     echo -e "\n"
     echo -e "${AZUL}%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%${RESET}"
-    echo -e "${BLANCO}     ¡Gracias por usar nmap4me! Bye!      ${RESET}"
+    echo -e "${BLANCO}     ¡Gracias por usar scan4me! Bye!      ${RESET}"
     echo -e "${AZUL}%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%${RESET}"
     exit 0
 }
@@ -50,6 +50,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 target=$1
+subdominio=$2
 
 if [ -z "$target" ]; then
     echo -e "${ROJO}❌ Error: debe introducir la IP o Dominio para empezar${RESET}"
@@ -58,7 +59,7 @@ if [ -z "$target" ]; then
 fi
 
 # Comprobando dependencias (Añadido whatweb)
-dependencies=(fzf nmap whatweb feroxbuster)
+dependencies=(fzf nmap whatweb feroxbuster wpscan)
 for tool in "${dependencies[@]}"; do
     if ! command -v "$tool" &> /dev/null; then
         echo -e "${ROJO}❌ Error: '$tool' no está instalado.${RESET}"
@@ -82,6 +83,7 @@ fi
 # Comprobar si el objetivo es alcanzable (IP o Dominio)
 echo ""
 echo -e "${AZUL}🔍 Verificando conexión $target...Esto no debería llevar más de 3 segundos...${RESET}"
+echo -e
 if ! host "$target" &>/dev/null && ! ping -c 1 -W 1 -q "$target" &>/dev/null; then
     echo -e "${ROJO}⚠️  Atención: No se puede resolver o no hay respuesta de '$target'.${RESET}"
     echo -e -n "${AMARILLO}¿Deseas continuar de todos modos? (s/n): ${RESET}"
@@ -116,7 +118,8 @@ while true; do
         "7. Web Recon (Nmap Scripts)           | NMAP_WEB_RECON"
         "8. Whatweb                            | whatweb"
         "9. Feroxbuster (fuzzing web)          | feroxbuster"    
-        "10.       -- SALIR --                 | exit"
+        "10. Wpscan (reconocimiento wordpress) | wpscan" 
+        "x.           -- SALIR --              | exit"
     )
 
     selection=$(printf "%s\n" "${options[@]}" | fzf --prompt="🔍 [Target: $target] Selecciona tu escaneo: " --height=15% --layout=reverse --border)
@@ -191,6 +194,29 @@ while true; do
         read -n 1 -s -r -p "Pulsa cualquier tecla para volver al menú..."
         continue
     fi
+# ---- opción 10 wpscan ----
+    if [[ "$selection" == *"wpscan"* ]]; then
+        url="$target"
+        if [[ ! "$url" =~ ^https?:// ]]; then
+            url="http://$url"
+        fi
+        echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | tee -a "$reporte_txt"
+        echo -e "🕒 INICIO wpscan: $(date '+%Y-%m-%d %H:%M:%S')" | tee -a "$reporte_txt"
+        echo -e "🚀 COMANDO: ${VERDE}wpscan --url $url$subdominio -e u,ap --detection-mode aggressive --force${RESET}" | tee -a "$reporte_txt"
+        echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | tee -a "$reporte_txt"
+        
+        echo -e "${ROJO}---------------  *ATENCIÓN*  ---------------${RESET}\nSi el wordpress esta alojado en un subdominio, se debe salir y volver a ejecutar introduciendo la ip con un espacio /subdominio.\n\n${MAGENTA}------> Ejemplo: 172.17.0.2 /wordpress${RESET}"
+
+        wpscan --url $url$subdominio -e u,ap --detection-mode aggressive --force | tee -a "$reporte_txt"
+        
+        echo -e "\n${VERDE}✅ Resultados en: $reporte_txt${RESET}"
+        echo ""
+        read -n 1 -s -r -p "Pulsa cualquier tecla para volver al menú..."
+        continue
+    fi
+
+
+
 
     # Extraer flags para Nmap (Opciones 1-6)
     # He corregido las comillas aquí para evitar errores de interpretación
