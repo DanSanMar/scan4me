@@ -1,11 +1,11 @@
-# 🔍 Scan4Me (nmap4me v2.0) - ALL 4 ME
+# 🔍 Scan4Me (nmap4me v3.0) - ALL 4 ME
 
 ![Status](https://img.shields.io/badge/Status-Stable-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 ![Bash](https://img.shields.io/badge/Bash-Script-orange)
 ![Platform](https://img.shields.io/badge/Platform-Linux%20%2F%20Kali%20%2F%20Parrot-black)
 
-**Scan4Me** es una herramienta de auditoría de red interactiva y automatizada escrita en Bash. Diseñada para pentesters y administradores de sistemas, combina múltiples herramientas de reconocimiento (Nmap, WhatWeb, Feroxbuster) en una interfaz de menú intuitiva con soporte para colores, registro de logs y exportación a XML.
+**Scan4Me** es una herramienta de auditoría de red interactiva y automatizada escrita en Bash. Diseñada para pentesters y administradores de sistemas, combina múltiples herramientas de reconocimiento (Nmap, WhatWeb, Feroxbuster, WPscan) en una interfaz de menú intuitiva con soporte para colores, registro de logs y exportación a XML.
 
 > ⚠️ **Nota:** Esta herramienta requiere privilegios de root (`sudo`) para ejecutar escaneos completos de red.
 
@@ -14,10 +14,10 @@
 ## ✨ Características Principales
 
 - 🎨 **Interfaz Interactiva:** Menú navegable mediante `fzf` para una selección rápida de escaneos.
-- 🛠️ **Multiherramienta:** Integra **Nmap**, **WhatWeb** y **Feroxbuster** en un solo flujo de trabajo.
+- 🛠️ **Multiherramienta:** Integra **Nmap**, **WhatWeb**, **Feroxbuster** y **WPscan**en un solo flujo de trabajo.
 - 💾 **Registro Automático:** Genera reportes en texto plano (`.txt`) y opcionalmente en formato XML para cada escaneo.
 - 🌐 **Reconocimiento Web:** Detección de tecnologías web, enumeración de directorios y escaneo de vulnerabilidades.
-- 🎯 **Soporte Total:** Desde escaneos rápidos de OS/Versión hasta escaneos de puertos completos (TCP/UDP).
+- 🎯 **Versatilidad:** Desde escaneos rápidos de OS/Versión hasta escaneos de puertos completos (TCP/UDP).
 - 🖥️ **Visualización:** Salida coloreada y organizada en tiempo real.
 
 ---
@@ -29,7 +29,7 @@ Antes de ejecutar el script, asegúrate de tener instaladas las siguientes herra
 ### Herramientas Obligatorias
 ```bash
 sudo apt update
-sudo apt install -y nmap fzf whatweb feroxbuster
+sudo apt install -y nmap fzf whatweb feroxbuster wpscan
 
 Wordlist (SecLists)
 El script requiere la wordlist common.txt de SecLists. Si no la tienes, instálala con:
@@ -87,7 +87,8 @@ Opción	Descripción	Comando Subyacente
 7	Web Recon (Nmap Scripts)	nmap -p 80,443 --script http-enum,http-title...
 8	WhatWeb	whatweb -a 1 -t 1 -v ...
 9	Feroxbuster (Dir Brute)	feroxbuster --url <url> --wordlist ...
-10	Salir	Cierra el script
+10 Wpscan (Reconocimiento) wpscan --url $url$subdominio -e u,ap --detection-mode aggressive --force
+x	Salir	Cierra el script
 
 ⚠️ Advertencias de Seguridad
 Uso Ético: Esta herramienta está diseñada únicamente para auditorías de seguridad autorizadas. El escaneo de redes o sistemas sin permiso explícito es ilegal en muchas jurisdicciones.
