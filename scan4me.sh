@@ -146,34 +146,84 @@ while true; do
     if [[ "$selection" == *"1."* ]] || [[ "$selection" == *"Automático"* ]]; then
         echo -e "\n${AZUL}🚀 Iniciando Escaneo Automático (Fase 1: Descubrimiento de puertos)${RESET}"
         # lógica para extraer puertos
-        open_ports=$(nmap -sS -p- -Pn -T4 "$target" | grep "/tcp" | cut -d/ -f1 | xargs | tr ' ' ',')
+        flags="-sS -p- -n -Pn --open -T4"
+
+      
+        echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}"
+        echo -e "🕒 INICIO AUTO-SCAN: $(date '+%d-%m-%Y %H:%M:%S')"
+        echo -e "🚀 COMANDO: nmap $flags $target"
+        echo -e "${AZUL}══════════════════════════════════════════════════${RESET}"
+        
+        open_ports=$(nmap $flags "$target" | grep "/tcp" | cut -d/ -f1 | xargs | tr ' ' ',')
         
         if [ -z "$open_ports" ]; then
             echo -e "${ROJO}❌ No se encontraron puertos abiertos.${RESET}"
         else
             echo -e "\n${VERDE}✅ Puertos encontrados: $open_ports${RESET}"
             echo
-            echo -e "${AZUL}🚀 Fase 2: Escaneo de vulnerabilidades y versiones...${RESET}"
+            echo -e "${AZUL}🚀 Fase 2: Escaneo de scripts y versiones...${RESET}"
             
-            flags="-sCV -Pn --script vuln -p $open_ports"
+            flags="-sSCV -Pn -n -p"
+
+            if [[ "$xml_status" == "ON" ]]; then
+
+            archivo_xml="$folder/nmap_auto_${target}_$(date +%H%M%S)"
+        
+            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" 
+            echo -e "🕒 INICIO AUTO-SCAN XML: $(date '+%d-%m-%Y %H:%M:%S')" 
+            echo -e "🚀 COMANDO: nmap $flags $target" 
+            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" 
+                
+            nmap $flags $open_ports "$target" -oA "$archivo_xml"
+
+            echo
+            echo -e "${AZUL}🚀 Fase 3: Escaneo de vulnerabilidades...${RESET}"
+
+            flags="--script vuln -p"
+
+            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" 
+            echo -e "🕒 INICIO AUTO-SCAN XML: $(date '+%d-%m-%Y %H:%M:%S')"
+            echo -e "🚀 COMANDO: nmap $flags $target"
+            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" 
+
+            echo -e "\n${CYAN}Este script puede tardar más tiempo, sobre todo si hay muchos puertos abiertos${RESET}\n"
+            
+            nmap $flags $open_ports "$target" -oA "$archivo_xml"
+
+            echo -e "\n${AZUL}--------------------------------------------------${RESET}"
+            echo -e "\n${VERDE}✅ Resultados añadidos y listos para parsear en: $archivo_xml${RESET}"
+            echo -e "\n${AZUL}--------------------------------------------------${RESET}"
+            echo -e "\n${VERDE}✅ Escaneo finalizado.${RESET}"
+            echo ""
+            read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
+            continue
+            fi
+        
+            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | tee -a "$reporte_txt"
+            echo -e "🕒 INICIO AUTO-SCAN: $(date '+%d-%m-%Y %H:%M:%S')" | tee -a "$reporte_txt"
+            echo -e "🚀 COMANDO: nmap $flags $open_ports $target" | tee -a "$reporte_txt"
+            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n" | tee -a "$reporte_txt"
+            
+            nmap $flags $open_ports "$target" | tee -a "$reporte_txt"
+            
+            echo
+            echo -e "${AZUL}🚀 Fase 3: Escaneo de vulnerabilidades...${RESET}"
+            
+            flags="--script vuln -p"
             
             echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | tee -a "$reporte_txt"
             echo -e "🕒 INICIO AUTO-SCAN: $(date '+%d-%m-%Y %H:%M:%S')" | tee -a "$reporte_txt"
-            echo -e "🚀 COMANDO: nmap $flags $target" | tee -a "$reporte_txt"
+            echo -e "🚀 COMANDO: nmap $flags $open_ports $target" | tee -a "$reporte_txt"
             echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n" | tee -a "$reporte_txt"
-                
-            echo -e "${CYAN}Este script puede tardar más tiempo, sobre todo si hay muchos puertos abiertos${RESET}\n"
 
-            if [[ "$xml_status" == "ON" ]]; then
-                archivo_xml="$folder/nmap_auto_${target}_$(date +%H%M%S).xml"
-                nmap $flags -oX "$archivo_xml" "$target" | tee -a "$reporte_txt"
-                echo -e "\n${VERDE}🌐 XML guardado en: $archivo_xml${RESET}"
-            else
-                nmap $flags "$target" | tee -a "$reporte_txt"
-            fi
-        echo -e "\n${VERDE}📄 Reporte guardado en: $reporte_txt${RESET}"
-        echo -e "\n${AZUL}--------------------------------------------------${RESET}"
-        echo -e "\n${VERDE}✅ Escaneo finalizado.${RESET}"
+            echo -e "${CYAN}Este script puede tardar más tiempo, sobre todo si hay muchos puertos abiertos${RESET}\n"
+           
+            nmap $flags $open_ports "$target" | tee -a "$reporte_txt"
+
+                
+            echo -e "\n${VERDE}📄 Reporte guardado en: $reporte_txt${RESET}"
+            echo -e "\n${AZUL}--------------------------------------------------${RESET}"
+            echo -e "\n${VERDE}✅ Escaneo finalizado.${RESET}"
         fi
         echo
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
