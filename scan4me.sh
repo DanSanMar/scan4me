@@ -31,8 +31,60 @@ function mostrar_logo() {
     echo ""
     echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░"
     echo -e "${AZUL}-[ Escaneo Interactivo de Red con multiherramientas ]-${RESET}"
-    echo -e "${BLANCO}--[ Versión: 3.5 Feroxbuster + SectList + wpscan + submenú nmap y modo Auto ]--${RESET}"
+    echo -e "${BLANCO}--[ Versión: 3.5.2 Feroxbuster + SectList + wpscan + submenú nmap y modo Auto update ]--${RESET}"
     echo ""
+}
+
+function procesar_reportes() {
+    local ultimo_xml=$(ls -t "$folder"/*.xml 2>/dev/null | head -n 1)
+    [ -z "$ultimo_xml" ] && return
+
+    local nombre_base="${ultimo_xml%.xml}"
+    local archivo_nmap="${nombre_base}.nmap"
+    local archivo_md="${nombre_base}_resumen.md"
+    local archivo_html="${nombre_base}.html"
+
+    # 1. HTML (Para verlo en navegador)
+    xsltproc "$ultimo_xml" -o "$archivo_html"
+
+    # 2. Markdown "MODO BRUTO"
+    {
+        echo "# 🛡️ Reporte de Escaneo: $target"
+        echo "📅 **Fecha:** $(date '+%d-%m-%Y %H:%M:%S')"
+        
+        echo -e "\n## 🚪 Puertos y Servicios (Resumen)"
+        echo "| Puerto | Estado | Servicio | Versión |"
+        echo "| :--- | :--- | :--- | :--- |"
+        
+        # Extraer la tabla de puertos para el resumen inicial
+        grep -E "^[0-9]+/" "$archivo_nmap" | grep -v "SERVICE" | while read -r line; do
+            p_data=$(echo "$line" | tr -s ' ')
+            p_id=$(echo "$p_data" | cut -d' ' -f1)
+            p_stat=$(echo "$p_data" | cut -d' ' -f2)
+            p_serv=$(echo "$p_data" | cut -d' ' -f3)
+            p_ver=$(echo "$p_data" | cut -d' ' -f4-)
+            echo "| $p_id | $p_stat | $p_serv | ${p_ver:-n/a} |"
+        done
+
+        echo -e "\n## 📄 Salida Completa de Nmap (Scripts & Vulns)"
+        echo "\`\`\`text"
+        
+        # LÓGICA BRUTA:
+        # Sed busca desde la línea que tiene "PORT" hasta el final del archivo.
+        # Quitamos las líneas de Nmap done y los tiempos para que sea más limpio.
+        sed -n '/PORT/,/Nmap done/p' "$archivo_nmap" | \
+        grep -vE "Service detection performed|Nmap done|incorrect results" | \
+        sed 's/^[ \t]*//'
+        
+        echo "\`\`\`"
+        
+        echo -e "\n---"
+        echo "*Reporte generado automáticamente por scan4me*"
+    } > "$archivo_md"
+
+    echo -e "${VERDE}✅ Reportes generados correctamente.${RESET}"
+
+    echo -e "${VERDE}✅ Kit de Writeup listo en la carpeta de auditoría en: $(basename "$archivo_md")${RESET}"
 }
 
 function despedida() {
@@ -61,7 +113,7 @@ if [ -z "$target" ]; then
 fi
 
 # Comprobando dependencias 
-dependencies=(fzf nmap whatweb feroxbuster wpscan)
+dependencies=(fzf nmap whatweb feroxbuster wpscan xsltproc)
 for tool in "${dependencies[@]}"; do
     if ! command -v "$tool" &> /dev/null; then
         echo -e "${ROJO}❌ Error: '$tool' no está instalado.${RESET}"
@@ -190,8 +242,10 @@ while true; do
             
             nmap $flags $open_ports "$target" -oA "$archivo_xml"
 
+            procesar_reportes
+
             echo -e "\n${AZUL}--------------------------------------------------${RESET}"
-            echo -e "\n${VERDE}✅ Resultados añadidos y listos para parsear en: $archivo_xml${RESET}"
+            echo -e "\n${VERDE}✅ Resultados añadidos procesados en: $archivo_xml${RESET}"
             echo -e "\n${AZUL}--------------------------------------------------${RESET}"
             echo -e "\n${VERDE}✅ Escaneo finalizado.${RESET}"
             echo ""
