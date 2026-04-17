@@ -30,8 +30,8 @@ function mostrar_logo() {
     echo "     ╚═╝  ╚═╝╚══════╝╚══════╝      ╚═╝╚═╝     ╚═╝╚══════╝"
     echo ""
     echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░"
-    echo -e "${AZUL}-[ Escaneo Interactivo de Red con multiherramientas ]-${RESET}"
-    echo -e "${BLANCO}--[ Versión: 3.5.2 Feroxbuster + SectList + wpscan + submenú nmap y modo Auto update ]--${RESET}"
+    echo -e "${AZUL}--[ Escaneo Interactivo de Red con multiherramientas ]--${RESET}"
+    echo -e "${BLANCO}--[ Versión: 3.6 Nmap + Feroxbuster + SectList + Wpscan + Nmap Auto + updates]--${RESET}"
     echo ""
 }
 
@@ -123,16 +123,30 @@ for tool in "${dependencies[@]}"; do
 done
 
 # Comprobación de SecLists (wordlist)
-wordlist="/usr/share/seclists/Discovery/Web-Content/common.txt"
-
-if [ ! -f "$wordlist" ]; then
+# Definimos las rutas posibles
+wordlist_standard="/usr/share/seclists/Discovery/Web-Content/common.txt"
+wordlist_snap="/snap/seclists/current/Discovery/Web-Content/common.txt"
+# Inicializamos la variable vacía
+wordlist=""
+# Comprobamos la ruta y definimos la variable final con la ruta correcta
+if [ -f "$wordlist_standard" ]; then
+    wordlist="$wordlist_standard"
+elif [ -f "$wordlist_snap" ]; then
+    wordlist="$wordlist_snap"
+else
+    # Aviso de error!!  
     echo -e "${ROJO}❌ Error: SecLists no está instalado o falta la wordlist.${RESET}"
-    echo -e "${AMARILLO}💡 Instálalo con:${RESET}"
-    echo -e "${VERDE}sudo apt install seclists -y${RESET}"
+    echo -e "${AMARILLO}💡 Puedes instalarlo de varias formas:${RESET}"
+    echo -e "${VERDE}Con apt: sudo apt install seclists -y${RESET}"
+    echo -e "${VERDE}Con snap: sudo snap install seclists -y${RESET}"
     echo -e "${AMARILLO}O manualmente:${RESET}"
-    echo -e "${VERDE}git clone https://github.com/danielmiessler/SecLists /usr/share/seclists${RESET}"
-    exit 1
+    echo -e "${VERDE}sudo git clone --depth 1 https://github.com/danielmiessler/SecLists /usr/share/seclists${RESET}"
+    echo -e -n "\n${AMARILLO}Sin SecLists no se podrán usar algunas funciones. \n¿Deseas continuar de todos modos? (s/n): ${RESET}"
+    read confirm
+    [[ "$confirm" != "s" ]] && exit 1
 fi
+
+
 
 # Comprobar si el objetivo es alcanzable (IP o Dominio)
 echo ""
@@ -149,9 +163,15 @@ folder="Auditoria_${target}_$(date +%d-%m-%Y)"
 mkdir -p "$folder"
 reporte_txt="$folder/Auditoria_Completa_${target}.txt"
 
-echo -e "${VERDE}🔍 Comprobación de programas instalados: OK ✅${RESET}"
-echo -e "${VERDE}🔍 Conectividad ping con host: OK ✅${RESET}"
-echo -e "${VERDE}🔍 Comprobación usuario ROOT: OK ✅${RESET}"
+if [ -n "$wordlist" ]; then
+    echo -e "${VERDE}🔍 Comprobación SecLists instalado:      --- OK ✅${RESET}"
+else
+    echo -e "${ROJO} ⚠️Comprobación SecLists no instalado ❌El fuzzing web no está disponible${RESET}"
+fi
+
+echo -e "${VERDE}🔍 Comprobación de programas instalados: --- OK ✅${RESET}"
+echo -e "${VERDE}🔍 Conectividad ping con host:           --- OK ✅${RESET}"
+echo -e "${VERDE}🔍 Comprobación usuario ROOT:            --- OK ✅${RESET}"
 sleep 1
 echo
 echo -e "${VERDE}✅ Sistema listo! Empezando Auditoria 🚀${RESET}"
@@ -174,7 +194,7 @@ while true; do
         "x.           -- SALIR --              | exit"
     )
 
-    selection=$(printf "%s\n" "${options[@]}" | fzf --prompt="🔍 Selecciona acción: " --height=15% --layout=reverse --border)
+    selection=$(printf "%s\n" "${options[@]}" | fzf --prompt="🔍 Selecciona el tipo de acción: " --height=15% --layout=reverse --border)
     
 # --- DETECTOR DE SELECCIÓN VACÍA (ESC o Enter sin elegir) ---
     if [ -z "$selection" ]; then
@@ -188,11 +208,13 @@ while true; do
     fi
 
     if [[ "$selection" == *"TOGGLE"* ]]; then
-        if [[ "$xml_status" == "OFF" ]]; then xml_status="ON"; else xml_status="OFF"; fi
+        if [[ "$xml_status" == "OFF" ]]; then 
+            xml_status="ON"; 
+        else 
+            xml_status="OFF"; 
+        fi
         continue
     fi
-
-
 
     # --- OPCIÓN 1: ESCANEO AUTOMÁTICO  ---
     if [[ "$selection" == *"1."* ]] || [[ "$selection" == *"Automático"* ]]; then
@@ -379,6 +401,11 @@ while true; do
 
     if [[ "$selection" == *"4. Feroxbuster"* ]]; then
         
+        if [ -z "$wordlist" ]; then
+        echo -e "${ROJO}❌ Error: No puedes usar Feroxbuster sin el diccionario SecLists.${RESET}"
+        read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
+        continue
+        fi
         url="$target"
         if [[ ! "$url" =~ ^https?:// ]]; then
             url="http://$url"
