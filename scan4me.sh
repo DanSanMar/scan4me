@@ -13,6 +13,89 @@ CYAN="\033[1;36m"
 MAGENTA="\033[1;35m"
 #Se ha puesto directamente para evitar errores ALARMA="\e[1;5m"
 
+# --- DETECCIÓN DE GESTOR DE PAQUETES ---
+detectar_gestor() {
+    if command -v apt &> /dev/null; then
+        echo "apt"
+    elif command -v dnf &> /dev/null; then
+        echo "dnf"
+    elif command -v pacman &> /dev/null; then
+        echo "pacman"
+    elif command -v zypper &> /dev/null; then
+        echo "zypper"
+    else
+        echo "unknown"
+    fi
+}
+
+GESTOR=$(detectar_gestor)
+
+# --- DEFINICIÓN DE DEPENDENCIAS ---
+dependencies=(fzf nmap whatweb feroxbuster wpscan xsltproc host)
+
+# --- LÓGICA DE INSTALACIÓN ---
+install_tools() {
+    local tools_to_install=("$@")
+    
+    if [ ${#tools_to_install[@]} -eq 0 ]; then
+        echo -e "${VERDE}✅ Todas las dependencias están satisfechas.${RESET}"
+        return 0
+    fi
+
+    echo -e "${AMARILLO}🔧 Se detectaron herramientas faltantes: ${tools_to_install[*]}${RESET}"
+    
+    # Actualizar repositorios
+    if [[ "$GESTOR" == "apt" ]]; then
+        echo -e "${AZUL}🔄 Actualizando repositorios (apt)...${RESET}"
+        sudo apt update
+    elif [[ "$GESTOR" == "dnf" ]]; then
+        echo -e "${AZUL}🔄 Actualizando repositorios (dnf)...${RESET}"
+        sudo dnf makecache
+    elif [[ "$GESTOR" == "zypper" ]]; then
+        echo -e "${AZUL}🔄 Actualizando repositorios (zypper)...${RESET}"
+        sudo zypper refresh
+    elif [[ "$GESTOR" == "pacman" ]]; then
+        echo -e "${AZUL}🔄 Actualizando repositorios (pacman)...${RESET}"
+        sudo pacman -Sy
+    fi
+
+    for tool in "${tools_to_install[@]}"; do
+        pkg=$(get_package_name "$tool")
+        echo -e "${AZUL}📦 Instalando: $tool (paquete: $pkg) ...${RESET}"
+        
+        local success=false
+        
+        case "$GESTOR" in
+            "apt")
+                sudo apt install -y "$pkg" && success=true
+                ;;
+            "dnf")
+                sudo dnf install -y "$pkg" && success=true
+                ;;
+            "pacman")
+                sudo pacman -S --noconfirm "$pkg" && success=true
+                ;;
+            "zypper")
+                sudo zypper install -y "$pkg" && success=true
+                ;;
+            *)
+                # Fallback a Snap
+                if command -v snap &> /dev/null; then
+                    echo -e "${AMARILLO}⚠️ Gestor no detectado, intentando vía Snap...${RESET}"
+                    local snap_flags=""
+                    [[ "$tool" == "fzf" || "$tool" == "feroxbuster" ]] && snap_flags="--classic"
+                    sudo snap install "$pkg" $snap_flags && success=true
+                else
+                    echo -e "${ROJO}❌ Error: No se pudo instalar $tool automáticamente.${RESET}"
+                fi
+                ;;
+        esac
+
+        if [ "$success" = false ]; then
+            echo -e "${ROJO}⚠️ Falló la instalación de $tool.${RESET}"
+        fi
+    done
+}
 # --- VARIABLE DE ESTADO XML ---
 xml_status="OFF"
 
@@ -31,7 +114,7 @@ function mostrar_logo() {
     echo ""
     echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░"
     echo -e "${AZUL}--[ Escaneo Interactivo de Red con multiherramientas ]--${RESET}"
-    echo -e "${BLANCO}--[ Versión: 3.6 Nmap + Feroxbuster + SectList + Wpscan + Nmap Auto + updates]--${RESET}"
+    echo -e "${BLANCO}--[ Versión: 4 Nmap + Feroxbuster + SectList + Wpscan + Nmap Auto + Auto-install]--${RESET}"
     echo ""
 }
 
@@ -112,15 +195,76 @@ if [ -z "$target" ]; then
     exit 1
 fi
 
-# Comprobando dependencias 
-dependencies=(fzf nmap whatweb feroxbuster wpscan xsltproc)
-for tool in "${dependencies[@]}"; do
-    if ! command -v "$tool" &> /dev/null; then
-        echo -e "${ROJO}❌ Error: '$tool' no está instalado.${RESET}"
-        echo -e "${AMARILLO}💡 Instálalo con: sudo apt install $tool -y${RESET}"
+# --- MAPEO DE NOMBRES DE PAQUETES (CORREGIDO) ---
+get_package_name() {
+    local tool=$1
+    case "$tool" in
+        "xsltproc")
+            if [[ "$GESTOR" == "apt" ]]; then echo "libxml2-utils"
+            elif [[ "$GESTOR" == "dnf" || "$GESTOR" == "zypper" ]]; then echo "libxml2-utils"
+            elif [[ "$GESTOR" == "pacman" ]]; then echo "libxml2"
+            else echo "xsltproc"
+            fi
+            ;;
+        "host")
+            if [[ "$GESTOR" == "apt" ]]; then echo "dnsutils"
+            elif [[ "$GESTOR" == "dnf" || "$GESTOR" == "zypper" ]]; then echo "bind-utils"
+            elif [[ "$GESTOR" == "pacman" ]]; then echo "bind"
+            else echo "bind-utils"
+            fi
+            ;;
+        "feroxbuster")
+            echo "feroxbuster"
+            ;;
+        "fzf")
+            echo "fzf"
+            ;;
+        *)
+            echo "$tool"
+            ;;
+    esac
+}
+
+# --- LÓGICA DE RE-VERIFICACIÓN ROBUSTA ---
+check_dependencies() {
+    missing_tools=()
+    for tool in "${dependencies[@]}"; do
+        if ! command -v "$tool" &> /dev/null; then
+            missing_tools+=("$tool")
+        fi
+    done
+}
+
+# --- FLUJO PRINCIPAL INTEGRADO ---
+check_dependencies
+
+if [ ${#missing_tools[@]} -gt 0 ]; then
+    echo -e "${ROJO}❌ Faltan herramientas: ${missing_tools[*]}${RESET}"
+    echo -e "${AMARILLO}¿Deseas intentar instalarlas automáticamente? (s/n): ${RESET}"
+    read confirm
+
+    if [[ "$confirm" == "s" ]]; then
+        echo -e "${AZUL}🚀 Iniciando instalación...${RESET}"
+        install_tools "${missing_tools[@]}"
+        
+        echo -e "${AZUL}🔄 Re-verificando dependencias...${RESET}"
+        sleep 2 # Pequeña pausa para que termine el proceso
+        
+        check_dependencies # Re-verificación REAL
+        
+        if [ ${#missing_tools[@]} -gt 0 ]; then
+            echo -e "${ROJO}❌ ERROR CRÍTICO: No se pudieron instalar las siguientes herramientas: ${missing_tools[*]}${RESET}"
+            echo -e "${AMARILLO}💡 Por favor, instálalas manualmente antes de continuar.${RESET}"
+            exit 1
+        else
+            echo -e "${VERDE}✅ ¡Todas las dependencias instaladas correctamente!${RESET}"
+        fi
+    else
+        echo -e "${ROJO}❌ Instalación cancelada. El script no puede continuar.${RESET}"
         exit 1
     fi
-done
+    
+fi
 
 # Comprobación de SecLists (wordlist)
 # Definimos las rutas posibles
