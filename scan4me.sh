@@ -15,17 +15,11 @@ MAGENTA="\033[1;35m"
 
 # --- DETECCIÓN DE GESTOR DE PAQUETES ---
 detectar_gestor() {
-    if command -v apt &> /dev/null; then
-        echo "apt"
-    elif command -v dnf &> /dev/null; then
-        echo "dnf"
-    elif command -v pacman &> /dev/null; then
-        echo "pacman"
-    elif command -v zypper &> /dev/null; then
-        echo "zypper"
-    else
-        echo "unknown"
-    fi
+    if command -v apt &> /dev/null; then echo "apt"
+    elif command -v dnf &> /dev/null; then echo "dnf"
+    elif command -v pacman &> /dev/null; then echo "pacman"
+    elif command -v zypper &> /dev/null; then echo "zypper"
+    else echo "unknown"; fi
 }
 
 GESTOR=$(detectar_gestor)
@@ -33,69 +27,133 @@ GESTOR=$(detectar_gestor)
 # --- DEFINICIÓN DE DEPENDENCIAS ---
 dependencies=(fzf nmap whatweb feroxbuster wpscan xsltproc host)
 
-# --- LÓGICA DE INSTALACIÓN ---
+
+# --- MAPEO DE NOMBRES DE PAQUETES  ---
+get_package_name() {
+    local tool=$1
+    case "$tool" in
+        "xsltproc") echo "xsltproc" ;;
+        "host") [[ "$GESTOR" == "apt" ]] && echo "dnsutils" || echo "bind-utils" ;;
+        "feroxbuster") echo "SNAP_REQUIRED" ;;
+        "wpscan") echo "GEM_REQUIRED" ;; # Cambiamos Snap por Ruby Gems
+        *) echo "$tool" ;;
+    esac
+}
+
 install_tools() {
     local tools_to_install=("$@")
     
-    if [ ${#tools_to_install[@]} -eq 0 ]; then
-        echo -e "${VERDE}✅ Todas las dependencias están satisfechas.${RESET}"
-        return 0
-    fi
-
-    echo -e "${AMARILLO}🔧 Se detectaron herramientas faltantes: ${tools_to_install[*]}${RESET}"
-    
-    # Actualizar repositorios
-    if [[ "$GESTOR" == "apt" ]]; then
-        echo -e "${AZUL}🔄 Actualizando repositorios (apt)...${RESET}"
-        sudo apt update
-    elif [[ "$GESTOR" == "dnf" ]]; then
-        echo -e "${AZUL}🔄 Actualizando repositorios (dnf)...${RESET}"
-        sudo dnf makecache
-    elif [[ "$GESTOR" == "zypper" ]]; then
-        echo -e "${AZUL}🔄 Actualizando repositorios (zypper)...${RESET}"
-        sudo zypper refresh
-    elif [[ "$GESTOR" == "pacman" ]]; then
-        echo -e "${AZUL}🔄 Actualizando repositorios (pacman)...${RESET}"
-        sudo pacman -Sy
-    fi
+    echo -e "\n${AZUL}🔄 Actualizando repositorios ($GESTOR)...${RESET}"
+    case "$GESTOR" in
+        "apt") sudo apt update -y ;;
+        "dnf") sudo dnf makecache ;;
+        "pacman") sudo pacman -Sy ;;
+        "zypper") sudo zypper refresh ;;
+    esac
 
     for tool in "${tools_to_install[@]}"; do
         pkg=$(get_package_name "$tool")
-        echo -e "${AZUL}📦 Instalando: $tool (paquete: $pkg) ...${RESET}"
-        
-        local success=false
-        
-        case "$GESTOR" in
-            "apt")
-                sudo apt install -y "$pkg" && success=true
-                ;;
-            "dnf")
-                sudo dnf install -y "$pkg" && success=true
-                ;;
-            "pacman")
-                sudo pacman -S --noconfirm "$pkg" && success=true
-                ;;
-            "zypper")
-                sudo zypper install -y "$pkg" && success=true
-                ;;
-            *)
-                # Fallback a Snap
-                if command -v snap &> /dev/null; then
-                    echo -e "${AMARILLO}⚠️ Gestor no detectado, intentando vía Snap...${RESET}"
-                    local snap_flags=""
-                    [[ "$tool" == "fzf" || "$tool" == "feroxbuster" ]] && snap_flags="--classic"
-                    sudo snap install "$pkg" $snap_flags && success=true
-                else
-                    echo -e "${ROJO}❌ Error: No se pudo instalar $tool automáticamente.${RESET}"
-                fi
-                ;;
-        esac
 
-        if [ "$success" = false ]; then
-            echo -e "${ROJO}⚠️ Falló la instalación de $tool.${RESET}"
+        if [[ "$pkg" == "GEM_REQUIRED" ]]; then
+            echo -e "\n${AZUL}💎 Instalando $tool y dependencias de compilación para $GESTOR...${RESET}"
+            
+            case "$GESTOR" in
+                "apt")
+                    sudo apt update -y
+                    sudo apt install -y ruby-full build-essential zlib1g-dev libcurl4-openssl-dev libcurl4
+                    ;;
+                "dnf")
+                    # Equivalentes exactos para Fedora
+                    sudo dnf install -y ruby ruby-devel gcc gcc-c++ make zlib-devel libcurl-devel openssl-devel
+                    ;;
+                *)
+                    echo -e "${ROJO}⚠️ Gestor no soportado para dependencias Ruby. Intenta instalarlas manualmente.${RESET}"
+                    ;;
+            esac
+    
+            sudo ldconfig 2>/dev/null
+            echo -e "${AZUL}⚙️ Instalando gema WPScan...${RESET}"
+            sudo gem install wpscan
+            continue
+        fi
+
+        if [[ "$pkg" == "SNAP_REQUIRED" ]]; then
+
+            if ! command -v snap &> /dev/null; then
+                echo -e "\n${AMARILLO}⚠️ $tool requiere Snap, pero no está instalado.${RESET}"
+                echo -ne "${AMARILLO}¿Desea instalar snapd ahora? (s/n): ${RESET}"
+                read -r snap_pref
+                if [[ "$snap_pref" == "s" ]]; then
+                    echo -e "\n${AZUL}📦 Instalando motor de Snap...${RESET}"
+                    case "$GESTOR" in
+                        "apt") 
+                            sudo apt install -y snapd
+                            sudo systemctl enable --now snapd.socket
+                            # Enlace simbólico vital en Debian para rutas estándar
+                            sudo ln -s /var/lib/snapd/snap /snap 2>/dev/null 
+                            ;;
+                        "dnf") sudo dnf install -y snapd && sudo systemctl enable --now snapd.socket ;;
+                    esac
+                    export PATH="$PATH:/snap/bin:/var/lib/snapd/snap/bin"
+                    
+                else
+                    echo -e "${ROJO}❌ No se puede instalar $tool por falta de Snap.${RESET}"
+                    continue
+                fi
+            fi
+
+
+            echo -e "${AZUL}📦 Instalando $tool vía Snap...${RESET}"
+            local classic=""
+            [[ "$tool" == "feroxbuster" || "$tool" == "fzf" ]] && classic="--classic"
+            sudo snap install "$tool" $classic
+            export PATH=$PATH:/var/lib/snapd/snap/bin
+            
+        else
+            echo -e "${AZUL}📦 Instalando paquete: $pkg...${RESET}"
+            case "$GESTOR" in
+                "apt") sudo apt install -y "$pkg" ;;
+                "dnf") sudo dnf install -y "$pkg" ;;
+                "pacman") sudo pacman -S --noconfirm "$pkg" ;;
+                "zypper") sudo zypper install -y "$pkg" ;;
+            esac
         fi
     done
 }
+
+mostrar_instrucciones() {
+    clear
+    echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}"
+    echo -e "${BLANCO} 📖 GUÍA DE INSTALACIÓN MANUAL PARA TU SISTEMA (${GESTOR^^})${RESET}"
+    echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n"
+
+    for tool in "${missing_tools[@]}"; do
+        echo -e "${AMARILLO}🛠  Herramienta: ${BLANCO}$tool${RESET}"
+        case "$tool" in
+            "fzf"|"nmap"|"whatweb"|"xsltproc"|"host")
+                pkg=$(get_package_name "$tool")
+                echo -e "   ${VERDE}✔ Estándar:${RESET} sudo $GESTOR install -y $pkg"
+                ;;
+            "feroxbuster")
+                echo -e "   ${VERDE}✔ Snap:${RESET}      sudo snap install feroxbuster"
+                echo -e "   ${VERDE}✔ Manual:${RESET}    curl -sL https://raw.githubusercontent.com/epi052/feroxbuster/master/install-nix.sh | bash"
+                ;;
+            "wpscan")
+                echo -e "   ${VERDE}✔ RubyGem:${RESET}   sudo gem install wpscan"
+                echo -e "   ${VERDE}✔ Snap:${RESET}      sudo snap install wpscan"
+                ;;
+        esac
+        echo -e "${AZUL}--------------------------------------------------${RESET}"
+    done
+    
+    if [ ! -f "$wordlist_standard" ] && [ ! -f "$wordlist_snap" ]; then
+        echo -e "${AMARILLO}📚 Diccionario: SecLists${RESET}"
+        echo -e "   ${VERDE}✔ Git (Recomendado):${RESET} sudo git clone --depth 1 https://github.com/danielmiessler/SecLists /usr/share/seclists"
+        echo -e "   ${VERDE}✔ APT (Kali/Debian):${RESET} sudo apt install seclists"
+        echo -e "${AZUL}--------------------------------------------------${RESET}"
+    fi
+}
+
 # --- VARIABLE DE ESTADO XML ---
 xml_status="OFF"
 
@@ -114,7 +172,7 @@ function mostrar_logo() {
     echo ""
     echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░"
     echo -e "${AZUL}--[ Escaneo Interactivo de Red con multiherramientas ]--${RESET}"
-    echo -e "${BLANCO}--[ Versión: 4 Nmap + Feroxbuster + SectList + Wpscan + Nmap Auto + Auto-install]--${RESET}"
+    echo -e "${BLANCO}--[ Versión: 4.5 Nmap + Feroxbuster + SectList + Wpscan + Nmap Auto + Auto-install]--${RESET}"
     echo ""
 }
 
@@ -195,110 +253,103 @@ if [ -z "$target" ]; then
     exit 1
 fi
 
-# --- MAPEO DE NOMBRES DE PAQUETES (CORREGIDO) ---
-get_package_name() {
-    local tool=$1
-    case "$tool" in
-        "xsltproc")
-            if [[ "$GESTOR" == "apt" ]]; then echo "libxml2-utils"
-            elif [[ "$GESTOR" == "dnf" || "$GESTOR" == "zypper" ]]; then echo "libxml2-utils"
-            elif [[ "$GESTOR" == "pacman" ]]; then echo "libxml2"
-            else echo "xsltproc"
-            fi
-            ;;
-        "host")
-            if [[ "$GESTOR" == "apt" ]]; then echo "dnsutils"
-            elif [[ "$GESTOR" == "dnf" || "$GESTOR" == "zypper" ]]; then echo "bind-utils"
-            elif [[ "$GESTOR" == "pacman" ]]; then echo "bind"
-            else echo "bind-utils"
-            fi
-            ;;
-        "feroxbuster")
-            echo "feroxbuster"
-            ;;
-        "fzf")
-            echo "fzf"
-            ;;
-        *)
-            echo "$tool"
-            ;;
-    esac
-}
 
-# --- LÓGICA DE RE-VERIFICACIÓN ROBUSTA ---
+# --- LÓGICA DE RE-VERIFICACIÓN ---
 check_dependencies() {
     missing_tools=()
     for tool in "${dependencies[@]}"; do
-        if ! command -v "$tool" &> /dev/null; then
+        # Intenta encontrarlo de forma normal, y si no, busca en la ruta de Snap
+        if ! command -v "$tool" &> /dev/null && [ ! -f "/snap/bin/$tool" ] && [ ! -f "/var/lib/snapd/snap/bin/$tool" ]; then
             missing_tools+=("$tool")
         fi
     done
 }
-
-# --- FLUJO PRINCIPAL INTEGRADO ---
+# --- FLUJO PRINCIPAL DE DEPENDENCIAS ---
 check_dependencies
 
 if [ ${#missing_tools[@]} -gt 0 ]; then
-    echo -e "${ROJO}❌ Faltan herramientas: ${missing_tools[*]}${RESET}"
-    echo -e "${AMARILLO}¿Deseas intentar instalarlas automáticamente? (s/n): ${RESET}"
-    read confirm
+    echo -e "${ROJO}❌ No se han podido encontrar estas herramientas: ${missing_tools[*]}${RESET}"
+    echo -e "${CYAN}¿Qué deseas hacer?${RESET}"
+    echo -e "   ${BLANCO}s) Intento de instalación automática (Sudo)${RESET}"
+    echo -e "   ${BLANCO}i) Mostrar instrucciones de instalación manual${RESET}"
+    echo -e "   ${BLANCO}n) Continuar de todos modos (Puede fallar)${RESET}"
+    echo -ne "\n${AMARILLO}Selecciona una opción: ${RESET}"
+    read -r confirm
 
     if [[ "$confirm" == "s" ]]; then
-        echo -e "${AZUL}🚀 Iniciando instalación...${RESET}"
         install_tools "${missing_tools[@]}"
-        
-        echo -e "${AZUL}🔄 Re-verificando dependencias...${RESET}"
-        sleep 2 # Pequeña pausa para que termine el proceso
-        
-        check_dependencies # Re-verificación REAL
-        
-        if [ ${#missing_tools[@]} -gt 0 ]; then
-            echo -e "${ROJO}❌ ERROR CRÍTICO: No se pudieron instalar las siguientes herramientas: ${missing_tools[*]}${RESET}"
-            echo -e "${AMARILLO}💡 Por favor, instálalas manualmente antes de continuar.${RESET}"
-            exit 1
-        else
-            echo -e "${VERDE}✅ ¡Todas las dependencias instaladas correctamente!${RESET}"
-        fi
-    else
-        echo -e "${ROJO}❌ Instalación cancelada. El script no puede continuar.${RESET}"
+        check_dependencies
+       
+    elif [[ "$confirm" == "i" ]]; then
+        mostrar_instrucciones
+        echo -e "\n${CYAN}Una vez instaladas, vuelve a ejecutar el script.${RESET}"
+        exit 0
+    elif [[ "$confirm" != "n" ]]; then
+        echo -e "${ROJO}❌ Abortando.${RESET}"
         exit 1
     fi
-    
 fi
 
 # Comprobación de SecLists (wordlist)
 # Definimos las rutas posibles
+# --- COMPROBACIÓN Y AUTO-INSTALACIÓN DE SECLISTS ---
+
+# Cambiamos la ruta a una que Snap SI pueda leer ($HOME)
+# --- COMPROBACIÓN Y AUTO-INSTALACIÓN DE SECLISTS CORREGIDA ---
+
+# 1. Identificar quién es el usuario real (no root) y su HOME
+REAL_USER=${SUDO_USER:-$USER}
+REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
+
+# 2. Definir rutas posibles (Priorizando el HOME del usuario real)
+wordlist_user="$REAL_HOME/seclists/Discovery/Web-Content/common.txt"
 wordlist_standard="/usr/share/seclists/Discovery/Web-Content/common.txt"
 wordlist_snap="/snap/seclists/current/Discovery/Web-Content/common.txt"
-# Inicializamos la variable vacía
+
 wordlist=""
-# Comprobamos la ruta y definimos la variable final con la ruta correcta
-if [ -f "$wordlist_standard" ]; then
+
+# 3. Lógica de detección
+if [ -f "$wordlist_user" ]; then
+    wordlist="$wordlist_user"
+elif [ -f "$wordlist_standard" ]; then
     wordlist="$wordlist_standard"
 elif [ -f "$wordlist_snap" ]; then
     wordlist="$wordlist_snap"
 else
-    # Aviso de error!!  
-    echo -e "${ROJO}❌ Error: SecLists no está instalado o falta la wordlist.${RESET}"
-    echo -e "${AMARILLO}💡 Puedes instalarlo de varias formas:${RESET}"
-    echo -e "${VERDE}Con apt: sudo apt install seclists -y${RESET}"
-    echo -e "${VERDE}Con snap: sudo snap install seclists -y${RESET}"
-    echo -e "${AMARILLO}O manualmente:${RESET}"
-    echo -e "${VERDE}sudo git clone --depth 1 https://github.com/danielmiessler/SecLists /usr/share/seclists${RESET}"
-    echo -e -n "\n${AMARILLO}Sin SecLists no se podrán usar algunas funciones. \n¿Deseas continuar de todos modos? (s/n): ${RESET}"
-    read confirm
-    [[ "$confirm" != "s" ]] && exit 1
+    echo -e "${ROJO}❌ SecLists no detectado.${RESET}"
+    echo -ne "${AMARILLO}¿Instalar SecLists vía GIT en $REAL_HOME/seclists? (s/n): ${RESET}"
+    read -r install_sl
+    
+    if [[ "$install_sl" == "s" ]]; then
+        echo -e "${AZUL}📥 Instalando git y clonando SecLists...${RESET}"
+        
+        case "$GESTOR" in
+            "apt") sudo apt install -y git ;;
+            "dnf") sudo dnf install -y git ;;
+            "pacman") sudo pacman -S --noconfirm git ;;
+            *) echo "Instala git manualmente"; exit 1 ;;
+        esac
+
+        # Clonamos como el usuario normal para que Snap tenga permisos de lectura
+        sudo -u "$REAL_USER" git clone --depth 1 https://github.com/danielmiessler/SecLists "$REAL_HOME/seclists"
+        
+        wordlist="$wordlist_user"
+
+        if [ ! -f "$wordlist" ]; then
+            echo -e "${ROJO}❌ Error al clonar. Revisa tu conexión.${RESET}"
+            exit 1
+        fi
+        echo -e "${VERDE}✅ SecLists instalado en $REAL_HOME/seclists${RESET}"
+    fi
 fi
-
-
-
 # Comprobar si el objetivo es alcanzable (IP o Dominio)
 echo ""
-echo -e "${AZUL}🔍 Verificando conexión $target...Esto no debería llevar más de 3 segundos...${RESET}"
+echo -e "${VERDE}OK ✅ Vamos a empezar ${RESET}"
+echo -e "\n${AZUL}🔍 Verificando conexión $target...Esto no debería llevar más de 3 segundos...${RESET}"
 echo -e
 if ! host "$target" &>/dev/null && ! ping -c 1 -W 1 -q "$target" &>/dev/null; then
     echo -e "${ROJO}⚠️  Atención: No se puede resolver o no hay respuesta de '$target'.${RESET}"
-    echo -e -n "${AMARILLO}¿Deseas continuar de todos modos? (s/n): ${RESET}"
+    echo -e -n "\n${AMARILLO}¿Deseas continuar de todos modos? (s/n): ${RESET}"
     read confirm
     [[ "$confirm" != "s" ]] && exit 1
 fi
@@ -308,9 +359,9 @@ mkdir -p "$folder"
 reporte_txt="$folder/Auditoria_Completa_${target}.txt"
 
 if [ -n "$wordlist" ]; then
-    echo -e "${VERDE}🔍 Comprobación SecLists instalado:      --- OK ✅${RESET}"
+    echo -e "\n${VERDE}🔍 Comprobación SecLists instalado:      --- OK ✅${RESET}"
 else
-    echo -e "${ROJO} ⚠️Comprobación SecLists no instalado ❌El fuzzing web no está disponible${RESET}"
+    echo -e "\n${ROJO} ⚠️Comprobación SecLists no instalado ❌El fuzzing web no está disponible${RESET}"
 fi
 
 echo -e "${VERDE}🔍 Comprobación de programas instalados: --- OK ✅${RESET}"
@@ -321,6 +372,16 @@ echo
 echo -e "${VERDE}✅ Sistema listo! Empezando Auditoria 🚀${RESET}"
 
 sleep 1
+
+# --- NORMALIZACIÓN DE COMANDOS ---
+# Esto busca el binario en el PATH o en las rutas estándar de Snap
+FEROX_BIN=$(command -v feroxbuster || echo "/snap/bin/feroxbuster")
+WPSCAN_BIN=$(command -v wpscan || echo "/usr/local/bin/wpscan")
+
+# Verificamos si realmente existen para evitar errores feos
+[[ ! -x "$FEROX_BIN" ]] && FEROX_BIN="feroxbuster" 
+[[ ! -x "$WPSCAN_BIN" ]] && WPSCAN_BIN="wpscan"
+
 # BUCLE DEL MENÚ INTERACTIVO
 while true; do
     mostrar_logo
@@ -560,7 +621,8 @@ while true; do
         echo -e "🚀 COMANDO: ${VERDE}feroxbuster --url $url --wordlist $wordlist --extensions bak,zip,txt,sql,old,php.bak --no-recursion --filter-size 0 --threads 50 --timeout 5${RESET}" | tee -a "$reporte_txt"
         echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | tee -a "$reporte_txt"
        
-        feroxbuster --url $url --wordlist "$wordlist" --extensions bak,zip,txt,sql,old,php.bak --no-recursion --filter-size 0 --threads 50 --timeout 5 | tee -a "$reporte_txt"
+        
+        $FEROX_BIN --url $url --wordlist "$wordlist" --extensions bak,zip,txt,sql,old,php.bak --no-recursion --filter-size 0 --threads 50 --timeout 5 | tee -a "$reporte_txt"
         
         echo -e "\n${VERDE}✅ Resultados en: $reporte_txt${RESET}"
         echo ""
@@ -580,7 +642,8 @@ while true; do
         #Aviso para opción subdominio wordpress
         echo -e "${ROJO}---------------  *ATENCIÓN*  ---------------${RESET}\nSi el wordpress está alojado en un subdominio, se debe salir y volver a ejecutar el script introduciendo la ip con un espacio /subdominio.\n\n${MAGENTA}------> Ejemplo: 172.17.0.2 /wordpress${RESET}"
 
-        wpscan --url $url$subdominio -e u,ap --detection-mode aggressive --force | tee -a "$reporte_txt"
+        
+        $WPSCAN_BIN --url $url$subdominio -e u,ap --detection-mode aggressive --force | tee -a "$reporte_txt"
         
         echo -e "\n${VERDE}✅ Resultados en: $reporte_txt${RESET}"
         echo ""   
