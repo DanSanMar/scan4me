@@ -156,6 +156,7 @@ mostrar_instrucciones() {
 
 # --- VARIABLE DE ESTADO XML ---
 xml_status="OFF"
+txt_status="OFF"
 
 # --- FUNCIÓN LOGO ---
 function mostrar_logo() {
@@ -172,8 +173,16 @@ function mostrar_logo() {
     echo ""
     echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░"
     echo -e "${AZUL}--[ Escaneo Interactivo de Red con multiherramientas ]--${RESET}"
-    echo -e "${BLANCO}--[ Versión: 4.5 Nmap + Feroxbuster + SectList + Wpscan + Nmap Auto + Auto-install]--${RESET}"
+    echo -e "${BLANCO}--[ Versión: 4.9 Nmap + Feroxbuster + SectList + Wpscan + Nmap Auto + Auto-install]--${RESET}"
     echo ""
+}
+
+function output_txt() {
+    if [[ "$txt_status" == "ON" ]]; then
+        tee -a "$reporte_txt"
+    else
+        cat
+    fi
 }
 
 function procesar_reportes() {
@@ -225,7 +234,7 @@ function procesar_reportes() {
 
     echo -e "${VERDE}✅ Reportes generados correctamente.${RESET}"
 
-    echo -e "${VERDE}✅ Kit de Writeup listo en la carpeta de auditoría en: $(basename "$archivo_md")${RESET}"
+    echo -e "${VERDE}✅ Kit de Writeup listo en la carpeta de auditoría en: $(basename "$archivo_md")\n${RESET}"
 }
 
 function despedida() {
@@ -290,12 +299,7 @@ if [ ${#missing_tools[@]} -gt 0 ]; then
     fi
 fi
 
-# Comprobación de SecLists (wordlist)
-# Definimos las rutas posibles
 # --- COMPROBACIÓN Y AUTO-INSTALACIÓN DE SECLISTS ---
-
-# Cambiamos la ruta a una que Snap SI pueda leer ($HOME)
-# --- COMPROBACIÓN Y AUTO-INSTALACIÓN DE SECLISTS CORREGIDA ---
 
 # 1. Identificar quién es el usuario real (no root) y su HOME
 REAL_USER=${SUDO_USER:-$USER}
@@ -374,11 +378,9 @@ echo -e "${VERDE}✅ Sistema listo! Empezando Auditoria 🚀${RESET}"
 sleep 1
 
 # --- NORMALIZACIÓN DE COMANDOS ---
-# Esto busca el binario en el PATH o en las rutas estándar de Snap
 FEROX_BIN=$(command -v feroxbuster || echo "/snap/bin/feroxbuster")
 WPSCAN_BIN=$(command -v wpscan || echo "/usr/local/bin/wpscan")
 
-# Verificamos si realmente existen para evitar errores feos
 [[ ! -x "$FEROX_BIN" ]] && FEROX_BIN="feroxbuster" 
 [[ ! -x "$WPSCAN_BIN" ]] && WPSCAN_BIN="wpscan"
 
@@ -387,21 +389,25 @@ while true; do
     mostrar_logo
     xml_color="${ROJO}"
     [[ "$xml_status" == "ON" ]] && xml_color="${VERDE}"
-    echo -e "${VERDE}🎯 Objetivo actual: ${BLANCO}$target${RESET} | ${AZUL}XML: ${xml_color}[$xml_status]${RESET}\n"
+    
+    txt_color="${ROJO}"
+    [[ "$txt_status" == "ON" ]] && txt_color="${VERDE}"
+    
+    echo -e "${VERDE}🎯 Objetivo actual: ${BLANCO}$target${RESET} | ${AZUL}XML: ${xml_color}[$xml_status]${RESET} | ${MAGENTA}Guardar TXT: ${txt_color}[$txt_status]${RESET}\n"
     
     options=(
-        "0. [TOGGLE] Guardar XML: $xml_status"
-        "1. Escaneo Automático Nmap            | (-p- -sSCV + Vuln)"
-        "2. Otras opciones con Nmap (Submenú)  | nmap"
-        "3. Whatweb (Reconocimiento web)       | whatweb"
-        "4. Feroxbuster (fuzzing web)          | feroxbuster"    
-        "5. Wpscan (reconocimiento wordpress)  | wpscan" 
-        "x.           -- SALIR --              | exit"
+        "📝 [CAMBIAR MODO GUARDADO TXT] -> Estado actual: $txt_status"
+        "⚙️ [CAMBIAR MODO CONFIG XML] -> Estado actual: $xml_status"
+        "1.  Escaneo Automático Nmap            | (-p- -sSCV + Vuln)"
+        "2.  Otras opciones con Nmap (Submenú)  | nmap"
+        "3.  Whatweb (Reconocimiento web)       | whatweb"
+        "4.  Feroxbuster (fuzzing web)          | feroxbuster"    
+        "5.  Wpscan (reconocimiento wordpress)  | wpscan" 
+        "x.            -- SALIR --              | exit"
     )
 
-    selection=$(printf "%s\n" "${options[@]}" | fzf --prompt="🔍 Selecciona el tipo de acción: " --height=15% --layout=reverse --border)
+    selection=$(printf "%s\n" "${options[@]}" | fzf --prompt="🔍 Selecciona el tipo de acción: " --height=18% --layout=reverse --border)
     
-# --- DETECTOR DE SELECCIÓN VACÍA (ESC o Enter sin elegir) ---
     if [ -z "$selection" ]; then
         echo -e "\n${ROJO}⚠️  Aviso: No has seleccionado ninguna opción (Selección vacía)\nSi lo que quieres es salir vuelve a pulsar Control+C.${RESET}\n"
         read -n 1 -s -r -p $'\e[1;5;33mPulsa cualquier tecla para volver al menú...\e[0m'
@@ -412,22 +418,21 @@ while true; do
         despedida
     fi
 
-    if [[ "$selection" == *"TOGGLE"* ]]; then
-        if [[ "$xml_status" == "OFF" ]]; then 
-            xml_status="ON"; 
-        else 
-            xml_status="OFF"; 
-        fi
+    if [[ "$selection" == *"[CAMBIAR MODO CONFIG XML]"* ]]; then
+        if [[ "$xml_status" == "OFF" ]]; then xml_status="ON"; else xml_status="OFF"; fi
+        continue
+    fi
+    
+    if [[ "$selection" == *"[CAMBIAR MODO GUARDADO TXT]"* ]]; then
+        if [[ "$txt_status" == "OFF" ]]; then txt_status="ON"; else txt_status="OFF"; fi
         continue
     fi
 
     # --- OPCIÓN 1: ESCANEO AUTOMÁTICO  ---
     if [[ "$selection" == *"1."* ]] || [[ "$selection" == *"Automático"* ]]; then
         echo -e "\n${AZUL}🚀 Iniciando Escaneo Automático (Fase 1: Descubrimiento de puertos)${RESET}"
-        # lógica para extraer puertos
         flags="-sS -p- -n -Pn --open -T4"
 
-      
         echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}"
         echo -e "🕒 INICIO AUTO-SCAN: $(date '+%d-%m-%Y %H:%M:%S')"
         echo -e "🚀 COMANDO: nmap $flags $target"
@@ -445,64 +450,65 @@ while true; do
             flags="-sSCV -Pn -n -p"
 
             if [[ "$xml_status" == "ON" ]]; then
-
-            archivo_xml="$folder/nmap_auto_${target}_$(date +%H%M%S)"
-        
-            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" 
-            echo -e "🕒 INICIO AUTO-SCAN XML: $(date '+%d-%m-%Y %H:%M:%S')" 
-            echo -e "🚀 COMANDO: nmap $flags $target" 
-            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" 
-                
-            nmap $flags $open_ports "$target" -oA "$archivo_xml"
-
-            echo
-            echo -e "${AZUL}🚀 Fase 3: Escaneo de vulnerabilidades...${RESET}"
-
-            flags="--script vuln -p"
-
-            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" 
-            echo -e "🕒 INICIO AUTO-SCAN XML: $(date '+%d-%m-%Y %H:%M:%S')"
-            echo -e "🚀 COMANDO: nmap $flags $target"
-            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" 
-
-            echo -e "\n${CYAN}Este script puede tardar más tiempo, sobre todo si hay muchos puertos abiertos${RESET}\n"
+                archivo_xml="$folder/nmap_auto_${target}_$(date +%H%M%S)"
             
-            nmap $flags $open_ports "$target" -oA "$archivo_xml"
+                echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" 
+                echo -e "🕒 INICIO AUTO-SCAN XML: $(date '+%d-%m-%Y %H:%M:%S')" 
+                echo -e "🚀 COMANDO: nmap $flags $target" 
+                echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" 
+                    
+                nmap $flags $open_ports "$target" -oA "$archivo_xml"
 
-            procesar_reportes
+                echo
+                echo -e "${AZUL}🚀 Fase 3: Escaneo de vulnerabilidades...${RESET}"
 
-            echo -e "\n${AZUL}--------------------------------------------------${RESET}"
-            echo -e "\n${VERDE}✅ Resultados añadidos procesados en: $archivo_xml${RESET}"
-            echo -e "\n${AZUL}--------------------------------------------------${RESET}"
-            echo -e "\n${VERDE}✅ Escaneo finalizado.${RESET}"
-            echo ""
-            read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
-            continue
+                flags="--script vuln -p"
+
+                echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" 
+                echo -e "🕒 INICIO AUTO-SCAN XML: $(date '+%d-%m-%Y %H:%M:%S')"
+                echo -e "🚀 COMANDO: nmap $flags $target"
+                echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" 
+
+                echo -e "\n${CYAN}Este script puede tardar más tiempo, sobre todo si hay muchos puertos abiertos${RESET}\n"
+                
+                nmap $flags $open_ports "$target" -oA "$archivo_xml"
+
+                procesar_reportes
+
+                echo -e "\n${AZUL}--------------------------------------------------${RESET}"
+                echo -e "\n${VERDE}✅ Resultados añadidos procesados en: $archivo_xml${RESET}"
+                echo -e "\n${AZUL}--------------------------------------------------${RESET}"
+                echo -e "\n${VERDE}✅ Escaneo finalizado.${RESET}"
+                echo ""
+                read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
+                continue
             fi
         
-            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | tee -a "$reporte_txt"
-            echo -e "🕒 INICIO AUTO-SCAN: $(date '+%d-%m-%Y %H:%M:%S')" | tee -a "$reporte_txt"
-            echo -e "🚀 COMANDO: nmap $flags $open_ports $target" | tee -a "$reporte_txt"
-            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n" | tee -a "$reporte_txt"
+            if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando escaneo de versiones...${RESET}"; fi
+            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
+            echo -e "🕒 INICIO AUTO-SCAN: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+            echo -e "🚀 COMANDO: nmap $flags $open_ports $target" | output_txt
+            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n" | output_txt
             
-            nmap $flags $open_ports "$target" | tee -a "$reporte_txt"
+            nmap $flags $open_ports "$target" | output_txt
             
             echo
             echo -e "${AZUL}🚀 Fase 3: Escaneo de vulnerabilidades...${RESET}"
             
             flags="--script vuln -p"
             
-            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | tee -a "$reporte_txt"
-            echo -e "🕒 INICIO AUTO-SCAN: $(date '+%d-%m-%Y %H:%M:%S')" | tee -a "$reporte_txt"
-            echo -e "🚀 COMANDO: nmap $flags $open_ports $target" | tee -a "$reporte_txt"
-            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n" | tee -a "$reporte_txt"
+            if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando escaneo de vulnerabilidades...${RESET}"; fi
+            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
+            echo -e "🕒 INICIO AUTO-SCAN: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+            echo -e "🚀 COMANDO: nmap $flags $open_ports $target" | output_txt
+            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n" | output_txt
 
             echo -e "${CYAN}Este script puede tardar más tiempo, sobre todo si hay muchos puertos abiertos${RESET}\n"
            
-            nmap $flags $open_ports "$target" | tee -a "$reporte_txt"
+            nmap $flags $open_ports "$target" | output_txt
 
                 
-            echo -e "\n${VERDE}📄 Reporte guardado en: $reporte_txt${RESET}"
+            [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}📄 Reporte guardado en: $reporte_txt${RESET}"
             echo -e "\n${AZUL}--------------------------------------------------${RESET}"
             echo -e "\n${VERDE}✅ Escaneo finalizado.${RESET}"
         fi
@@ -511,76 +517,62 @@ while true; do
         continue
     fi
 
-    # --- OPCIÓN 2: SUBMENÚ NMAP ---
-    if [[ "$selection" == *"2. Otras opciones"* ]]; then
+    # --- OPCIÓN 2: SUBMENÚ NMAP (CORREGIDO) ---
+    if [[ "$selection" == *"2. Otras opciones"* ]] || [[ "$selection" == *"Submenú"* ]]; then
         sub_options=(
             "1. Reconocimiento Rápido (OS/Versión) | -sS -O -sV -Pn -T4"
-            "2. Escaneo de Puertos Totales (p-)    | -sS -p- -Pn"
+            "2. Escaneo De Puertos Totales (p-)    | -sS -p- -Pn"
             "3. Enumeración de Servicios (sCV)     | -sSCV -Pn -p"
             "4. Escaneo de Vulnerabilidades (Vuln) | --script vuln -Pn -p"
             "5. UDP Discovery (Top 20 Puertos)     | -sU -Pn --top-ports 20 -T4"
             "6. UDP Investigación (Versiones)      | -sU -sV -Pn -p"
-            "7. Web Recon (Nmap Scripts)           | NMAP_WEB_RECON"
+            "7. Escaneo Silencioso (Bypass FW)     | -sF -f -T2 --data-length 25 -Pn"
+            "8. Web Recon Básica (Scripts HTTP)    | --script http-enum,http-robots.txt,http-title -p80,443"
+            "9. Web Recon Completo (Vulns Web)     | --script http-vuln-* -p80,443"
+            "10. Escaneo Agresivo Completo (-A)    | -A -T4 -Pn"
+            "11. Descubrimiento de Hosts (Ping)    | -sn -PS22,80,443 -PE"
             "b. << Volver al menú principal"
         )
         
-        selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="🛠 Opciones de Nmap: " --height=15% --layout=reverse --border)
+        # Usamos una variable separada (sub_selection) para no pisar la lógica global
+        sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="🛠 Opciones de Nmap: " --height=25% --layout=reverse --border)
         
-        [[ "$selection" == *"Volver"* ]] || [ -z "$selection" ] && continue
+        [[ "$sub_selection" == *"Volver"* || -z "$sub_selection" ]] && continue
 
-        # Si es Web Recon (Opcion 7 del submenú)
-        if [[ "$selection" == *"Web Recon"* ]]; then
-            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | tee -a "$reporte_txt"
-            echo -e "🕒 INICIO WEB RECON (Nmap): $(date '+%d-%m-%Y %H:%M:%S')" | tee -a "$reporte_txt"
-            echo -e "🚀 OBJETIVO: $target (Puertos por defecto: 80, 443)" | tee -a "$reporte_txt"
-            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n" | tee -a "$reporte_txt"
-
-            if [[ "$xml_status" == "ON" ]]; then
-            archivo_xml="$folder/web_recon_${target}_$(date +%H%M%S).xml"
-            nmap -p 80,443 -Pn -sV --script http-enum,http-title,http-methods,http-server-header -oX "$archivo_xml" "$target" | tee -a "$reporte_txt"
-            echo -e "\n${VERDE}🌐 XML guardado en: $archivo_xml${RESET}"
-            
-            else
-            nmap -p 80,443 -Pn -sV --script http-enum,http-title,http-methods,http-server-header "$target" | tee -a "$reporte_txt"
-            fi
-
-        echo -e "\n${VERDE}✅ Resultados añadidos a: $reporte_txt${RESET}"
-        echo -e "\n${AZUL}--------------------------------------------------${RESET}"
-        echo -e "\n${VERDE}✅ Escaneo finalizado.${RESET}"
-        echo ""
-            read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
-            continue
-        fi
-
-        # Para el resto de opciones del submenú (flags dinámicas)
-        flags=$(echo "$selection" | awk -F "|" "{print \$2}" | xargs)
+        flags=$(echo "$sub_selection" | awk -F "|" "{print \$2}" | xargs)
 
         if [[ "$flags" == *"-p" ]]; then
             echo -e -n "${AMARILLO}🔢 Introduce los puertos (ej: 80,443): ${RESET}"
             read -r ports
             if [ -z "$ports" ]; then
-            echo -e "${ROJO}❌ Error: Para esta opción debes indicar puertos.${RESET}"
-            sleep 1
-            continue
+                echo -e "${ROJO}❌ Error: Para esta opción debes indicar puertos.${RESET}"
+                sleep 1
+                continue
             fi
             flags="${flags} ${ports}"
         fi
 
-        echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | tee -a "$reporte_txt"
-        echo -e "🕒 INICIO NMAP: $(date '+%d-%m-%Y %H:%M:%S')" | tee -a "$reporte_txt"
-        echo -e "🚀 COMANDO: nmap $flags $target" | tee -a "$reporte_txt"
-        echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n" | tee -a "$reporte_txt"
-       
-        # Opción XML basada en el interruptor de la Opción 0
-        if [[ "$xml_status" == "ON" ]]; then
-        archivo_xml="$folder/nmap_${target}_$(date +%H%M%S).xml"
-        nmap $flags -oX "$archivo_xml" "$target" | tee -a "$reporte_txt"
-        echo -e "\n${VERDE}🌐 XML guardado en: $archivo_xml${RESET}"
+        if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando Nmap...${RESET}"; fi
+        echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
+        if [[ "$sub_selection" == *"Web Recon"* ]]; then
+            echo -e "🕒 INICIO WEB RECON (Nmap): $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
         else
-        nmap $flags "$target" | tee -a "$reporte_txt"
+            echo -e "🕒 INICIO NMAP: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+        fi
+        echo -e "🚀 COMANDO: nmap $flags $target" | output_txt
+        echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n" | output_txt
+       
+        if [[ "$xml_status" == "ON" ]]; then
+            if [[ "$sub_selection" == *"Web Recon"* ]]; then prefix="web_recon"; else prefix="nmap"; fi
+            
+            archivo_xml="$folder/${prefix}_${target}_$(date +%H%M%S).xml"
+            nmap $flags -oX "$archivo_xml" "$target" | output_txt
+            echo -e "\n${VERDE}🌐 XML guardado en: $archivo_xml${RESET}"
+        else
+            nmap $flags "$target" | output_txt
         fi
     
-        echo -e "\n${VERDE}📄 Reporte guardado en: $reporte_txt${RESET}"
+        [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}📄 Reporte guardado en: $reporte_txt${RESET}"
         echo -e "\n${AZUL}--------------------------------------------------${RESET}"
         echo -e "${VERDE}✅ Escaneo finalizado.${RESET}"
         
@@ -591,40 +583,40 @@ while true; do
 
     # --- OPCIONES (WHATWEB, FEROX, WPSCAN) ---
     if [[ "$selection" == *"Whatweb"* ]]; then
-        echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | tee -a "$reporte_txt"
-        echo -e "🕒 INICIO WHATWEB: $(date '+%d-%m-%Y %H:%M:%S')" | tee -a "$reporte_txt"
-        echo -e "🚀 COMANDO: ${VERDE}whatweb -a 1 -t 1 -v --no-errors --open-timeout=5 --read-timeout=5 $target${RESET}" | tee -a "$reporte_txt"
-        echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | tee -a "$reporte_txt"
+        if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando whatweb...${RESET}"; fi
+        echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
+        echo -e "🕒 INICIO WHATWEB: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+        echo -e "🚀 COMANDO: whatweb -a 1 -t 1 -v --no-errors --open-timeout=5 --read-timeout=5 $target" | output_txt
+        echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
 
-        whatweb -a 1 -t 1 -v --no-errors --open-timeout=5 --read-timeout=5 "$target" | tee -a "$reporte_txt"
+        whatweb -a 1 -t 1 -v --no-errors --open-timeout=5 --read-timeout=5 "$target" | output_txt
         
-        echo -e "\n${VERDE}✅ Resultados en: $reporte_txt${RESET}"
+        [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}✅ Resultados en: $reporte_txt${RESET}"
         echo ""
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
         continue
     fi
 
     if [[ "$selection" == *"4. Feroxbuster"* ]]; then
-        
         if [ -z "$wordlist" ]; then
-        echo -e "${ROJO}❌ Error: No puedes usar Feroxbuster sin el diccionario SecLists.${RESET}"
-        read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
-        continue
+            echo -e "${ROJO}❌ Error: No puedes usar Feroxbuster sin el diccionario SecLists.${RESET}"
+            read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
+            continue
         fi
         url="$target"
         if [[ ! "$url" =~ ^https?:// ]]; then
             url="http://$url"
         fi
 
-        echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | tee -a "$reporte_txt"
-        echo -e "🕒 INICIO feroxbuster: $(date '+%d-%m-%Y %H:%M:%S')" | tee -a "$reporte_txt"
-        echo -e "🚀 COMANDO: ${VERDE}feroxbuster --url $url --wordlist $wordlist --extensions bak,zip,txt,sql,old,php.bak --no-recursion --filter-size 0 --threads 50 --timeout 5${RESET}" | tee -a "$reporte_txt"
-        echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | tee -a "$reporte_txt"
+        if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando feroxbuster...${RESET}"; fi
+        echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
+        echo -e "🕒 INICIO feroxbuster: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+        echo -e "🚀 COMANDO: feroxbuster --url $url --wordlist $wordlist --extensions bak,zip,txt,sql,old,php.bak --no-recursion --filter-size 0 --threads 50 --timeout 5" | output_txt
+        echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
        
+        $FEROX_BIN --url $url --wordlist "$wordlist" --extensions bak,zip,txt,sql,old,php.bak --no-recursion --filter-size 0 --threads 50 --timeout 5 | output_txt
         
-        $FEROX_BIN --url $url --wordlist "$wordlist" --extensions bak,zip,txt,sql,old,php.bak --no-recursion --filter-size 0 --threads 50 --timeout 5 | tee -a "$reporte_txt"
-        
-        echo -e "\n${VERDE}✅ Resultados en: $reporte_txt${RESET}"
+        [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}✅ Resultados en: $reporte_txt${RESET}"
         echo ""
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
         continue
@@ -635,17 +627,17 @@ while true; do
         if [[ ! "$url" =~ ^https?:// ]]; then
             url="http://$url"
         fi
-        echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | tee -a "$reporte_txt"
-        echo -e "🕒 INICIO wpscan: $(date '+%d-%m-%Y %H:%M:%S')" | tee -a "$reporte_txt"
-        echo -e "🚀 COMANDO: ${VERDE}wpscan --url $url$subdominio -e u,ap --detection-mode aggressive --force${RESET}" | tee -a "$reporte_txt"
-        echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | tee -a "$reporte_txt"
-        #Aviso para opción subdominio wordpress
-        echo -e "${ROJO}---------------  *ATENCIÓN*  ---------------${RESET}\nSi el wordpress está alojado en un subdominio, se debe salir y volver a ejecutar el script introduciendo la ip con un espacio /subdominio.\n\n${MAGENTA}------> Ejemplo: 172.17.0.2 /wordpress${RESET}"
+        
+        if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando wpscan...${RESET}"; fi
+        echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
+        echo -e "🕒 INICIO wpscan: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+        echo -e "🚀 COMANDO: wpscan --url $url$subdominio -e u,ap --detection-mode aggressive --force" | output_txt
+        echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
+        echo -e "${ROJO}---------------  *ATENCIÓN* ---------------${RESET}\nSi el wordpress está alojado en un subdominio, se debe salir y volver a ejecutar el script introduciendo la ip con un espacio /subdominio.\n\n${MAGENTA}------> Ejemplo: 172.17.0.2 /wordpress${RESET}"
 
+        $WPSCAN_BIN --url $url$subdominio -e u,ap --detection-mode aggressive --force | output_txt
         
-        $WPSCAN_BIN --url $url$subdominio -e u,ap --detection-mode aggressive --force | tee -a "$reporte_txt"
-        
-        echo -e "\n${VERDE}✅ Resultados en: $reporte_txt${RESET}"
+        [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}✅ Resultados en: $reporte_txt${RESET}"
         echo ""   
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
         continue
