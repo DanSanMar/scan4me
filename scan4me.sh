@@ -25,7 +25,7 @@ detectar_gestor() {
 GESTOR=$(detectar_gestor)
 
 # --- DEFINICIÓN DE DEPENDENCIAS ---
-dependencies=(fzf nmap whatweb feroxbuster wpscan xsltproc host)
+dependencies=(fzf nmap whatweb feroxbuster wpscan xsltproc host arp-scan)
 
 
 # --- MAPEO DE NOMBRES DE PAQUETES  ---
@@ -36,6 +36,7 @@ get_package_name() {
         "host") [[ "$GESTOR" == "apt" ]] && echo "dnsutils" || echo "bind-utils" ;;
         "feroxbuster") echo "SNAP_REQUIRED" ;;
         "wpscan") echo "GEM_REQUIRED" ;; # Cambiamos Snap por Ruby Gems
+        "arp-scan") echo "arp-scan" ;;
         *) echo "$tool" ;;
     esac
 }
@@ -130,7 +131,7 @@ mostrar_instrucciones() {
     for tool in "${missing_tools[@]}"; do
         echo -e "${AMARILLO}🛠  Herramienta: ${BLANCO}$tool${RESET}"
         case "$tool" in
-            "fzf"|"nmap"|"whatweb"|"xsltproc"|"host")
+            "fzf"|"nmap"|"whatweb"|"xsltproc"|"host"|"arp-scan")
                 pkg=$(get_package_name "$tool")
                 echo -e "   ${VERDE}✔ Estándar:${RESET} sudo $GESTOR install -y $pkg"
                 ;;
@@ -173,7 +174,7 @@ function mostrar_logo() {
     echo ""
     echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░"
     echo -e "${AZUL}--[ Escaneo Interactivo de Red con multiherramientas ]--${RESET}"
-    echo -e "${BLANCO}--[ Versión: 4.9 Nmap + Feroxbuster + SectList + Wpscan + Nmap Auto + Auto-install]--${RESET}"
+    echo -e "${BLANCO}--[ Versión: 5 Reconcimiento de red + Nmap + Feroxbuster + SectList + Wpscan + Nmap Auto + Auto-install]--${RESET}"
     echo ""
 }
 
@@ -256,14 +257,7 @@ fi
 target=$1
 subdominio=$2
 
-if [ -z "$target" ]; then
-    echo -e "${ROJO}❌ Error: debe introducir la IP o Dominio para empezar${RESET}"
-    echo "Uso: ./nmap4me.sh <TARGET>"
-    exit 1
-fi
-
-
-# --- LÓGICA DE RE-VERIFICACIÓN ---
+# --- LÓGICA DE RE-VERIFICACIÓN (MOVIDA AQUÍ ARRIBA) ---
 check_dependencies() {
     missing_tools=()
     for tool in "${dependencies[@]}"; do
@@ -297,6 +291,56 @@ if [ ${#missing_tools[@]} -gt 0 ]; then
         echo -e "${ROJO}❌ Abortando.${RESET}"
         exit 1
     fi
+fi
+
+# --- MODO AUTODETECCIÓN DE RED LOCAL SI NO HAY PARÁMETRO ---
+if [ -z "$target" ]; then
+    echo -e "${AMARILLO}⚠️  No has especificado ningún objetivo (IP/Dominio).${RESET}"
+    echo -e "${AZUL}🔍 Despertando y escaneando la red local (arp-scan + nmap)...${RESET}\n"
+    sleep 1
+
+    # Archivos temporales para aislar todo el proceso
+    tmp_raw="/tmp/scan4me_raw.txt"
+    tmp_clean="/tmp/scan4me_clean.txt"
+    > "$tmp_raw"
+
+    # 1. Fase de descubrimiento ARP
+    arp-scan -l 2>/dev/null | grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' >> "$tmp_raw"
+
+    # 2. Fase de descubrimiento Nmap
+    interface=$(ip route | grep default | awk '{print $5}')
+    local_subnet=$(ip route | grep "dev $interface" | grep -v default | awk '{print $1}')
+    
+    if [ -n "$local_subnet" ] && [[ "$local_subnet" != "default" ]]; then
+        nmap -sn -PS22,80,443 -PE "$local_subnet" 2>/dev/null | grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' >> "$tmp_raw"
+    fi
+
+    # 3. Limpiamos las IPs y las guardamos en el archivo final
+    sort -u "$tmp_raw" | grep -E '^[0-9]' > "$tmp_clean"
+    rm -f "$tmp_raw"
+
+    # 4. Pasar el archivo final a FZF
+    if [ ! -s "$tmp_clean" ]; then
+        echo -e "${ROJO}❌ No se detectó ningún host activo en la red automáticamente.${RESET}"
+        echo -ne "${AMARILLO}Introduce la IP manualmente para empezar: ${RESET}"
+        read -r target
+        if [ -z "$target" ]; then echo -e "${ROJO}❌ Abortando.${RESET}"; rm -f "$tmp_clean"; exit 1; fi
+    else
+        echo -e "${AZUL}Selecciona un objetivo de la lista con FZF:${RESET}"
+        # SOLUCIÓN MÁGICA: fzf lee directamente el archivo, sin tuberías que lo rompan
+        target=$(cat "$tmp_clean" | fzf --prompt="🎯 Selecciona la IP víctima: " --height=40% --layout=reverse --border)
+    fi
+
+    rm -f "$tmp_clean"
+
+    # 5. Validación final del objetivo seleccionado
+    if [ -z "$target" ]; then
+        echo -e "${ROJO}❌ Selección inválida o cancelada. Saliendo...${RESET}"
+        exit 1
+    fi
+    
+    echo -e "\n${VERDE}🎯 Objetivo seleccionado con éxito: $target${RESET}"
+    sleep 1
 fi
 
 # --- COMPROBACIÓN Y AUTO-INSTALACIÓN DE SECLISTS ---
@@ -397,7 +441,7 @@ while true; do
     
     options=(
         "📝 [CAMBIAR MODO GUARDADO TXT] -> Estado actual: $txt_status"
-        "⚙️ [CAMBIAR MODO CONFIG XML] -> Estado actual: $xml_status"
+        "⚙️  [CAMBIAR MODO CONFIG XML] -> Estado actual: $xml_status"
         "1.  Escaneo Automático Nmap            | (-p- -sSCV + Vuln)"
         "2.  Otras opciones con Nmap (Submenú)  | nmap"
         "3.  Whatweb (Reconocimiento web)       | whatweb"
@@ -520,17 +564,19 @@ while true; do
     # --- OPCIÓN 2: SUBMENÚ NMAP (CORREGIDO) ---
     if [[ "$selection" == *"2. Otras opciones"* ]] || [[ "$selection" == *"Submenú"* ]]; then
         sub_options=(
-            "1. Reconocimiento Rápido (OS/Versión) | -sS -O -sV -Pn -T4"
-            "2. Escaneo De Puertos Totales (p-)    | -sS -p- -Pn"
-            "3. Enumeración de Servicios (sCV)     | -sSCV -Pn -p"
-            "4. Escaneo de Vulnerabilidades (Vuln) | --script vuln -Pn -p"
-            "5. UDP Discovery (Top 20 Puertos)     | -sU -Pn --top-ports 20 -T4"
-            "6. UDP Investigación (Versiones)      | -sU -sV -Pn -p"
-            "7. Escaneo Silencioso (Bypass FW)     | -sF -f -T2 --data-length 25 -Pn"
-            "8. Web Recon Básica (Scripts HTTP)    | --script http-enum,http-robots.txt,http-title -p80,443"
-            "9. Web Recon Completo (Vulns Web)     | --script http-vuln-* -p80,443"
-            "10. Escaneo Agresivo Completo (-A)    | -A -T4 -Pn"
-            "11. Descubrimiento de Hosts (Ping)    | -sn -PS22,80,443 -PE"
+            "1.  [TCP] Reconocimiento Rápido (OS/Versión) | -sS -O -sV -Pn -T4"
+            "2.  [TCP] Escaneo de Puertos Totales (p-)    | -sS -p- -Pn -T4"
+            "3.  [TCP] Enumeración de Servicios (sCV)     | -sSCV -Pn -p"
+            "4.  [TCP] Escaneo Agresivo Completo (-A)     | -A -T4 -Pn"
+            "5.  [VULN] Escaneo de Vulnerabilidades       | --script vuln -Pn -p"
+            "6.  [EVASIÓN] Mapeo de Firewall (ACK Scan)   | -sA -Pn -T4"
+            "7.  [EVASIÓN] Bypass (Señuelos + DNS Src)    | -sS -Pn -f -D RND:5 -g 53 --data-length 25 -T2"
+            "8.  [UDP] Discovery Rápido (Top 20 Puertos)  | -sU -Pn --top-ports 20 -T4"
+            "9.  [UDP] Investigación Profunda (Versiones) | -sU -sV -Pn -p"
+            "10. [LOCAL] Enumeración SMB (Carpetas/OS)    | --script smb-os-discovery,smb-enum-shares -p 139,445 -Pn"
+            "11. [LOCAL] Enumeración NetBIOS (UDP 137)    | -sU -p 137 --script nbstat -Pn"
+            "12. [WEB] Recon Básica (Enum, Robots, Title) | --script http-enum,http-robots.txt,http-title -p 80,443 -Pn"
+            "13. [WEB] Recon Completo (Vulns Web)         | --script http-vuln-* -p 80,443 -Pn"
             "b. << Volver al menú principal"
         )
         
