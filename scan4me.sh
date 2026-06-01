@@ -562,7 +562,7 @@ while true; do
     fi
 
     # --- OPCIÓN 2: SUBMENÚ NMAP (CORREGIDO) ---
-    if [[ "$selection" == *"2. Otras opciones"* ]] || [[ "$selection" == *"Submenú"* ]]; then
+    if [[ "$selection" == *"Nmap (Submenú)"* ]]; then
         sub_options=(
             "1.  [TCP] Reconocimiento Rápido (OS/Versión) | -sS -O -sV -Pn -T4"
             "2.  [TCP] Escaneo de Puertos Totales (p-)    | -sS -p- -Pn -T4"
@@ -643,11 +643,11 @@ while true; do
         continue
     fi
 
-    if [[ "$selection" == *"4. Feroxbuster"* ]]; then
+    if [[ "$selection" == *"Feroxbuster"* ]]; then
         if [ -z "$wordlist" ]; then
-            echo -e "${ROJO}❌ Error: No puedes usar Feroxbuster sin el diccionario SecLists.${RESET}"
-            read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
-            continue
+        echo -e "${ROJO}❌ Error: No puedes usar Feroxbuster sin el diccionario SecLists.${RESET}"
+        read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
+        continue
         fi
         url="$target"
         if [[ ! "$url" =~ ^https?:// ]]; then
