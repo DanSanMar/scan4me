@@ -1,87 +1,89 @@
-# 🔍 Scan4Me v3.6 - ALL4ME
+🔍 Scan4Me v5.0 - ALL4ME
 
-![Status](https://img.shields.io/badge/Status-Stable-brightgreen)
-![License](https://img.shields.io/badge/License-MIT-blue)
-![Bash](https://img.shields.io/badge/Bash-Script-orange)
-![Platform](https://img.shields.io/badge/Platform-Linux%20%2F%20Kali%20%2F%20Parrot-black)
+Scan4Me es una herramienta de auditoría y reconocimiento de red interactiva avanzada escrita en Bash. Diseñada para pentesters y administradores de sistemas, centraliza múltiples herramientas de seguridad en una interfaz de menú intuitiva potenciada por fzf, incluyendo en esta versión un sistema inteligente de instalación y detección automática de dependencias.
 
-**Scan4Me** es una herramienta de auditoría de red interactiva y automatizada escrita en Bash. Diseñada para pentesters y administradores de sistemas, combina múltiples herramientas de reconocimiento (Nmap, WhatWeb, Feroxbuster, WPscan) en una interfaz de menú intuitiva con soporte para colores, registro de logs y exportación a XML.
+⚠️ Nota: Esta herramienta requiere privilegios de root (sudo) para ejecutar los escaneos y gestionar las herramientas.
 
-> ⚠️ **Nota:** Esta herramienta requiere privilegios de root (`sudo`) para ejecutar escaneos completos de red.
+✨ Características Principales (Novedades de la v5)
 
----
+🎨 Interfaz Renovada: Salida visual de alta compatibilidad en 256 colores y logo dinámico en tiempo real.
 
-## ✨ Características Principales
+🗺️ Soporte Multi-Distro: Detección inteligente del gestor de paquetes nativo del sistema (apt, dnf, pacman o zypper).
 
-- 🎨 **Interfaz Interactiva:** Menú navegable mediante `fzf` para una selección rápida de escaneos.
-- 🛠️ **Multiherramienta:** Integra **Nmap**, **WhatWeb**, **Feroxbuster** y **WPscan** en un solo flujo de trabajo.
-- 💾 **Registro Automático:** Genera reportes en texto plano (`.txt`) y opcionalmente en formato XML para cada escaneo.
-- 🌐 **Reconocimiento Web:** Detección de tecnologías web, enumeración de directorios y escaneo de vulnerabilidades.
-- 🎯 **Versatilidad:** Desde escaneos rápidos de OS/Versión hasta escaneos de puertos completos (TCP/UDP).
-- 🖥️ **Visualización:** Salida coloreada y organizada en tiempo real.
+🤖 Instalador de Dependencias Integrado: Si falta alguna herramienta, el script ofrece instalarla automáticamente o muestra una guía manual personalizada para tu distribución.
 
----
+🎯 Modo Autodetección de Red Local: Si se ejecuta sin parámetros, el script activa una fase de descubrimiento de hosts mediante arp-scan y nmap -sn en la subred local, permitiendo seleccionar el objetivo interactivamente con fzf.
 
-## 📋 Requisitos Previos
+📚 Gestión Eficiente de SecLists: Clonación automática opcional vía GIT en el directorio HOME del usuario real en caso de no encontrarse en las rutas estándar.
 
-Antes de ejecutar el script, asegúrate de tener instaladas las siguientes herramientas y dependencias en tu sistema (basado en Debian/Ubuntu/Kali, aunque también se puede usar snap en otras distros):
+📝 Control de Logs Flexible: Permite activar o desactivar en caliente el guardado de reportes en texto plano (.txt) o con el modo XML, desde el menú principal.
 
-### Herramientas Obligatorias
-```bash
-sudo apt update
-sudo apt install -y nmap fzf whatweb feroxbuster wpscan
+🛠️ Mapeo de Herramientas Actualizado:
 
-Wordlist (SecLists)
-El script requiere la wordlist common.txt de SecLists. Si no la tienes, instálala con:
+WPScan: Ahora instalado y gestionado a través de Ruby Gems (gem) de forma nativa para mayor estabilidad.
 
-# Opción A: Desde repositorios apt 
-sudo apt install -y seclists
-# Opción B: Desde repositorio Snap
-sudo snap install seclists -y
-# Opción C: Clonar manualmente
-sudo git clone https://github.com/danielmiessler/SecLists /usr/share/seclists
+Feroxbuster: Gestión de instalación y rutas optimizada mediante Snap.
 
-El script buscará la wordlist en:
+📊 Post-Procesamiento de Reportes Automático (Kit de Writeup): Al finalizar un escaneo automático con el modo XML activo, se procesan los resultados para generar de manera automática un archivo HTML (vía xsltproc) y un reporte en Markdown estructurado (.md) ideal para documentación rápida de auditorías.
+
+📋 Requisitos Previos y Dependencias
+El script mapea e instala automáticamente los paquetes necesarios según tu sistema operativo. Las dependencias core incluyen:
+
+fzf, nmap, whatweb, feroxbuster, wpscan, xsltproc, host y arp-scan.
+
+El Diccionario SecLists
+El script requiere la wordlist common.txt de SecLists para las funciones de fuzzing web. Buscará de forma automática en las siguientes ubicaciones (priorizando el entorno de tu usuario no-root):
+
+$HOME/seclists/Discovery/Web-Content/common.txt
+
 /usr/share/seclists/Discovery/Web-Content/common.txt
+
 /snap/seclists/current/Discovery/Web-Content/common.txt
 
-🚀 Instalación
-Clona el repositorio:
+Si no lo encuentra, te ofrecerá clonarlo automáticamente mediante un clonado rápido (--depth 1).
 
+🚀 Instalación y Uso
+Clonar el repositorio
+Bash
 git clone https://github.com/DanSanMar/scan4me.git
 cd scan4me
-
-Otorga permisos de ejecución:
-
 chmod +x scan4me.sh
+Ejecución
+El script debe ejecutarse siempre con privilegios elevados (sudo).
 
-(Opcional) Mueve el script a tu PATH:
+1. Modo Objetivo Definido:
 
-sudo mv scan4me.sh /usr/local/bin/scan4me
+Bash
+sudo ./scan4me.sh <IP_O_DOMINIO>
+Ejemplo para escanear una web con un subdirectorio o subdominio específico para WPScan:
 
-📖 Uso
-La herramienta debe ejecutarse siempre con sudo.
+Bash
+sudo ./scan4me.sh 172.17.0.2 /wordpress
+2. Modo Autodetección de Red (Novedad v5):
 
-Ejecución Básica
-sudo ./scan4me.sh <TARGET_IP_OR_DOMAIN>
+Bash
+sudo ./scan4me.sh
+Si se omite el argumento, el script escaneará la red local de forma pasiva/activa y desplegará un menú fzf para seleccionar el host víctima descubierto.
 
-Ejemplos:
+📖 Flujo de Trabajo del Menú Interactivo
+Una vez iniciado, se despliega una interfaz gráfica en la terminal donde podrás conmutar opciones y lanzar auditorias:
 
-sudo ./scan4me.sh 192.168.1.1
-sudo ./scan4me.sh example.com
+Conmutadores globales (en caliente):
 
-Flujo de Trabajo
-Verificación: El script comprobará si eres root, si las herramientas están instaladas y si el objetivo es alcanzable.
-Menú Interactivo: Se desplegará un menú donde podrás seleccionar el tipo de escaneo.
+Cambiar Modo Guardado TXT: Activa/Desactiva el volcado del escaneo actual en la carpeta de auditoría.
 
-Configuración XML: Puedes activar/desactivar la generación de archivos XML desde la opción 0.
+Cambiar Modo Config XML: Activa/Desactiva los reportes detallados en Nmap junto con la posterior generación del Kit de Writeup (.md y .html).
 
-Resultados: Los resultados se guardarán automáticamente en una carpeta llamada Auditoria_<TARGET> y se appendearán a un archivo Auditoria_Completa_<TARGET>.txt.
+Escaneo Automático Nmap (Opción 1): Realiza un descubrimiento inteligente de puertos abiertos (-p-), seguido de un análisis de versiones/scripts (-sSCV) y un escaneo específico de vulnerabilidades (--script vuln).
+
+Submenú Nmap Avanzado (Opción 2): Menú especializado con 13 categorías preconfiguradas que incluyen evasión de Firewalls, escaneos agresivos, auditoría web técnica, enumeración SMB, NetBIOS y descubrimientos UDP profundos.
+
+Herramientas Web (Opciones 3, 4 y 5): Lanzamiento directo de reconocimientos tecnológicos con WhatWeb, Fuzzing de extensiones críticas con Feroxbuster o auditoría de CMS con WPScan.
 
 ⚠️ Advertencias de Seguridad
-Uso Ético: Esta herramienta está diseñada únicamente para auditorías de seguridad autorizadas. El escaneo de redes o sistemas sin permiso explícito es ilegal en muchas jurisdicciones.
-Privilegios Root: Requiere ejecución como root para acceder a todas las funcionalidades de Nmap (como detección de SO y escaneos SYN).
-Ruido en la Red: Algunos escaneos (especialmente UDP y brute-force con Feroxbuster) pueden generar mucho tráfico y ser detectados por sistemas IDS/IPS.
+Uso Ético: Esta herramienta está diseñada únicamente para auditorías de seguridad autorizadas. El escaneo de redes o sistemas sin permiso explícito es ilegal.
+
+Ruido en la Red: Ciertas opciones del submenú avanzado (como escaneos UDP intrusivos o fuerza bruta invasiva con Feroxbuster) generan alto tráfico y alertarán con facilidad a sistemas de detección de intrusos (IDS/IPS).
 
 📄 Licencia
 Este proyecto está bajo la Licencia MIT. Consulta el archivo LICENSE para más detalles.
