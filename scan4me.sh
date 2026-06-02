@@ -174,7 +174,7 @@ function mostrar_logo() {
     echo ""
     echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░"
     echo -e "${AZUL}--[ Escaneo Interactivo de Red con multiherramientas ]--${RESET}"
-    echo -e "${BLANCO}--[ Versión: 5 Reconcimiento de red + Nmap + Feroxbuster + SectList + Wpscan + Nmap Auto + Auto-install]--${RESET}"
+    echo -e "${BLANCO}--[ V 5.0 Reconocimiento de red + Nmap + Feroxbuster + SectList + Wpscan + Nmap Auto + Auto-install]--${RESET}"
     echo ""
 }
 
