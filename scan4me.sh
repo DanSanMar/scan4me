@@ -2,7 +2,7 @@
 
 export TERM=xterm-256color
 
-# Colores (Cambiados a \033 para mayor compatibilidad)
+# Colores a \033 para mayor compatibilidad
 BLANCO="\033[1;37m"
 AZUL="\033[1;36m"
 AMARILLO="\033[1;33m"
@@ -11,7 +11,7 @@ VERDE="\033[1;32m"
 RESET="\033[0m"
 CYAN="\033[1;36m"
 MAGENTA="\033[1;35m"
-#Se ha puesto directamente para evitar errores ALARMA="\e[1;5m"
+
 
 # --- DETECCIÓN DE GESTOR DE PAQUETES ---
 detectar_gestor() {
@@ -155,6 +155,115 @@ mostrar_instrucciones() {
     fi
 }
 
+function procesar_reportes() {
+    # Aseguramos que la carpeta existe y no está vacía
+    local backup_folder="Auditoria_${target}_$(date +%d-%m-%Y)"
+    local current_folder="${folder:-$backup_folder}"
+    
+    local xml_versiones=$(ls -t "$current_folder"/nmap_auto_${target}_*_fase2.xml 2>/dev/null | head -n 1)
+    local xml_vulns=$(ls -t "$current_folder"/nmap_auto_${target}_*_fase3.xml 2>/dev/null | head -n 1)
+    
+    if [ -z "$xml_versiones" ]; then
+        echo -e "${ROJO}⚠️ No se encontró el reporte XML base para procesar la automatización.${RESET}"
+        return
+    fi
+
+    local timestamp=$(date +%H%M%S)
+    local archivo_html="$current_folder/Writeup_${target}_${timestamp}.html"
+    local archivo_md="$current_folder/Writeup_${target}_${timestamp}.md"
+    local archivo_ia="$current_folder/ia_prompt_${target}.txt"
+
+    # 1. Generar HTML si xsltproc existe
+    if command -v xsltproc &> /dev/null; then
+        xsltproc "$xml_versiones" -o "$archivo_html" 2>/dev/null
+        echo -e "${VERDE}✅ Kit de Writeup HTML generado en: ${BLANCO}$(basename "$archivo_html")${RESET}"
+    fi
+
+    local nmap_file="${xml_versiones%.xml}.nmap"
+    local vuln_file="${xml_vulns%.xml}.nmap"
+
+    # 2. Generar Markdown estructurado (Tu reporte de cara al CTF)
+    {
+        echo "# 🎯 CTF Writeup / Auto-Report: $target"
+        echo "📅 **Fecha de Auditoría:** $(date '+%d-%m-%Y %H:%M:%S')"
+        echo "💻 **Objetivo (Target IP):** \`$target\`"
+        echo ""
+        echo "## 📝 1. Resumen Ejecutivo"
+        echo "Informe automático de vulnerabilidades y reconocimiento generado para entornos CTF."
+        echo ""
+        echo "## 🚪 2. Puertos y Servicios Detectados"
+        echo "| Puerto | Estado | Servicio | Versión |"
+        echo "| :---: | :---: | :--- | :--- |"
+        
+        if [ -f "$nmap_file" ]; then
+            grep -E "^[0-9]+/" "$nmap_file" | grep -v "SERVICE" | while read -r line; do
+                p_data=$(echo "$line" | tr -s ' ')
+                p_id=$(echo "$p_data" | cut -d' ' -f1)
+                p_stat=$(echo "$p_data" | cut -d' ' -f2)
+                p_serv=$(echo "$p_data" | cut -d' ' -f3)
+                p_ver=$(echo "$p_data" | cut -d' ' -f4-)
+                echo "| **$p_id** | \`$p_stat\` | $p_serv | ${p_ver:-n/a} |"
+            done
+        else
+            echo "| - | No se pudo procesar la tabla de puertos directos. | - | - |"
+        fi
+
+        echo ""
+        echo "## 🔍 3. Análisis de Versiones Detallado"
+        echo "\`\`\`text"
+        [ -f "$nmap_file" ] && sed -n '/PORT/,/Nmap done/p' "$nmap_file" | grep -vE "Service detection performed|Nmap done" | sed 's/^[ \t]*//'
+        echo "\`\`\`"
+
+        if [ -f "$vuln_file" ]; then
+            echo ""
+            echo "## ⚡ 4. Auditoría de Vulnerabilidades (Scripts Nmap)"
+            echo "\`\`\`text"
+            sed -n '/PORT/,/Nmap done/p' "$vuln_file" | grep -vE "Service detection performed|Nmap done" | sed 's/^[ \t]*//'
+            echo "\`\`\`"
+        fi
+    } > "$archivo_md"
+
+    echo -e "${VERDE}✅ Reporte Markdown estructurado listo en: ${BLANCO}$(basename "$archivo_md")${RESET}"
+
+    # =========================================================================
+    # 3. NUEVO: ARCHIVO DE TEXTO ULTRA-OPTIMIZADO PARA IA 
+    # =========================================================================
+    # Extraemos la lista limpia de puertos directamente desde el archivo final
+    local ports_list=""
+    if [ -f "$nmap_file" ]; then
+        ports_list=$(grep -E "^[0-9]+/" "$nmap_file" | cut -d/ -f1 | xargs | tr ' ' ',')
+    fi
+
+    {
+        echo "ACTÚA COMO UN TUTOR EXPERTO EN CIBERSEGURIDAD Y METODOLOGÍAS CTF."
+        echo "Tu objetivo es guiar de forma educativa e instructiva en el análisis de vulnerabilidades para entornos de laboratorio controlado."
+        echo "Analiza el siguiente output técnico recopilado sobre el objetivo: $target"
+        echo "Por favor, estructura tu respuesta detallando los siguientes puntos:"
+        echo "1. **Análisis de Superficie de Ataque:** Identifica servicios detectados, versiones obsoletas y posibles malas configuraciones."
+        echo "2. **Investigación Teórica (CVE):** Indica si existen vulnerabilidades conocidas asociadas a esas versiones y explica brevemente en qué consiste el fallo de seguridad."
+        echo "3. **Vectores de Entrada Sugeridos:** Explica conceptualmente cómo se podría interactuar con el servicio para validar la vulnerabilidad."
+        echo "4. **Metodología de Explotación Educativa:** Describe la lógica o los pasos conceptuales detallados (y las herramientas estándar de la industria como curl, nmap, netcat, etc.) necesarios para comprobar el vector de ataque en un entorno controlado."
+        echo "5. **Remediación y Buenas Prácticas:** Explica brevemente cómo se corregiría este fallo en un entorno de producción real."
+        echo "Mantén un tono académico, técnico y didáctico. Responde en español."
+        echo "--- START TARGET DATA ---"
+        echo "TARGET_IP: $target"
+        echo "PORTS_OPEN: ${ports_list:-Desconocidos}"
+        echo ""
+        echo "[VERSIONS_AND_SERVICES]"
+        if [ -f "$nmap_file" ]; then
+            sed -n '/PORT/,/Nmap done/p' "$nmap_file" | grep -vE "Service detection performed|Nmap done|SF:" | sed 's/^[ \t]*//' | grep -v "^$"
+        fi
+        echo ""
+        echo "[VULNERABILITY_SCRIPTS]"
+        if [ -f "$vuln_file" ]; then
+            sed -n '/PORT/,/Nmap done/p' "$vuln_file" | grep -vE "Service detection performed|Nmap done" | sed 's/^[ \t]*//' | grep -v "^$"
+        fi
+        echo "--- END TARGET DATA ---"
+    } > "$archivo_ia"
+
+    echo -e "${VERDE}🤖 Archivo optimizado para IA generado en: ${BLANCO}$(basename "$archivo_ia")${RESET}\n"
+}
+
 # --- VARIABLE DE ESTADO XML ---
 xml_status="OFF"
 txt_status="OFF"
@@ -172,10 +281,11 @@ function mostrar_logo() {
     echo "     ██║  ██║███████╗███████╗      ██║██║ ╚═╝ ██║███████╗"
     echo "     ╚═╝  ╚═╝╚══════╝╚══════╝      ╚═╝╚═╝     ╚═╝╚══════╝"
     echo ""
-    echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░"
+    echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░ --[ V 5.6 ]--"
     echo -e "${AZUL}--[ Escaneo Interactivo de Red con multiherramientas ]--${RESET}"
-    echo -e "${BLANCO}--[ V 5.5 Auto-install + Auto-scan + Reconocimiento de red + Nmap + Feroxbuster ]--${RESET}"
-    echo -e "${BLANCO}--[+ SectList + Wpscan + Nmap Auto + scan4windows]--${RESET}"
+    echo -e "${BLANCO}--===============================================================${RESET}"
+    echo -e "${BLANCO}--[ Auto-install + Auto-scan + Reconocimiento de red + Nmap + ]--${RESET}"
+    echo -e "${BLANCO}--[ Feroxbuster + SectList + Wpscan + Nmap Auto + scan4windows]--${RESET}"
     echo ""
 }
 
@@ -185,58 +295,6 @@ function output_txt() {
     else
         cat
     fi
-}
-
-function procesar_reportes() {
-    local ultimo_xml=$(ls -t "$folder"/*.xml 2>/dev/null | head -n 1)
-    [ -z "$ultimo_xml" ] && return
-
-    local nombre_base="${ultimo_xml%.xml}"
-    local archivo_nmap="${nombre_base}.nmap"
-    local archivo_md="${nombre_base}_resumen.md"
-    local archivo_html="${nombre_base}.html"
-
-    # 1. HTML (Para verlo en navegador)
-    xsltproc "$ultimo_xml" -o "$archivo_html"
-
-    # 2. Markdown "MODO BRUTO"
-    {
-        echo "# 🛡️ Reporte de Escaneo: $target"
-        echo "📅 **Fecha:** $(date '+%d-%m-%Y %H:%M:%S')"
-        
-        echo -e "\n## 🚪 Puertos y Servicios (Resumen)"
-        echo "| Puerto | Estado | Servicio | Versión |"
-        echo "| :--- | :--- | :--- | :--- |"
-        
-        # Extraer la tabla de puertos para el resumen inicial
-        grep -E "^[0-9]+/" "$archivo_nmap" | grep -v "SERVICE" | while read -r line; do
-            p_data=$(echo "$line" | tr -s ' ')
-            p_id=$(echo "$p_data" | cut -d' ' -f1)
-            p_stat=$(echo "$p_data" | cut -d' ' -f2)
-            p_serv=$(echo "$p_data" | cut -d' ' -f3)
-            p_ver=$(echo "$p_data" | cut -d' ' -f4-)
-            echo "| $p_id | $p_stat | $p_serv | ${p_ver:-n/a} |"
-        done
-
-        echo -e "\n## 📄 Salida Completa de Nmap (Scripts & Vulns)"
-        echo "\`\`\`text"
-        
-        # LÓGICA BRUTA:
-        # Sed busca desde la línea que tiene "PORT" hasta el final del archivo.
-        # Quitamos las líneas de Nmap done y los tiempos para que sea más limpio.
-        sed -n '/PORT/,/Nmap done/p' "$archivo_nmap" | \
-        grep -vE "Service detection performed|Nmap done|incorrect results" | \
-        sed 's/^[ \t]*//'
-        
-        echo "\`\`\`"
-        
-        echo -e "\n---"
-        echo "*Reporte generado automáticamente por scan4me*"
-    } > "$archivo_md"
-
-    echo -e "${VERDE}✅ Reportes generados correctamente.${RESET}"
-
-    echo -e "${VERDE}✅ Kit de Writeup listo en la carpeta de auditoría en: $(basename "$archivo_md")\n${RESET}"
 }
 
 function despedida() {
@@ -297,7 +355,7 @@ fi
 # --- MODO AUTODETECCIÓN DE RED LOCAL SI NO HAY PARÁMETRO ---
 if [ -z "$target" ]; then
     echo -e "${AMARILLO}⚠️  No has especificado ningún objetivo (IP/Dominio).${RESET}"
-    echo -e "${AZUL}🔍 Despertando y escaneando la red local (arp-scan + nmap)...${RESET}\n"
+    echo -e "${AZUL}🔍 Detectando subredes y escaneando la red...${RESET}\n"
     sleep 1
 
     # Archivos temporales para aislar todo el proceso
@@ -305,30 +363,44 @@ if [ -z "$target" ]; then
     tmp_clean="/tmp/scan4me_clean.txt"
     > "$tmp_raw"
 
-    # 1. Fase de descubrimiento ARP
-    arp-scan -l 2>/dev/null | grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' >> "$tmp_raw"
+    # 1. Fase de descubrimiento ARP en todas las interfaces posibles
+    arp-scan --localnet --ignoredups 2>/dev/null | grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' >> "$tmp_raw"
 
-    # 2. Fase de descubrimiento Nmap
-    interface=$(ip route | grep default | awk '{print $5}')
-    local_subnet=$(ip route | grep "dev $interface" | grep -v default | awk '{print $1}')
-    
-    if [ -n "$local_subnet" ] && [[ "$local_subnet" != "default" ]]; then
-        nmap -sn -PS22,80,443 -PE "$local_subnet" 2>/dev/null | grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' >> "$tmp_raw"
-    fi
+    # 2. Fase de descubrimiento Nmap iterando por TODAS las subredes válidas
+    # Extraemos todos los rangos IP asignados a la máquina (excluyendo la interfaz loopback)
+    subnets=$(ip -o -4 addr show | awk '{print $4}' | grep -v '127.0.0.1')
 
-    # 3. Limpiamos las IPs y las guardamos en el archivo final
-    sort -u "$tmp_raw" | grep -E '^[0-9]' > "$tmp_clean"
+    for subnet in $subnets; do
+        # Evitamos rangos de host único /32 para no perder tiempo
+        [[ "$subnet" == */32 ]] && continue
+        
+        echo -e "${CYAN}📡 Escaneando subred: $subnet...${RESET}"
+        
+        # PARAMETROS DE VELOCIDAD AGRESIVOS:
+        # --min-rate 5000: Envía mínimo 5000 paquetes por segundo (ideal para redes internas/virtuales)
+        # --max-rtt-timeout 20ms: Si un host local no responde en 20ms, pasa al siguiente (el script original esperaba hasta 1 segundo por IP)
+        # --host-timeout 1s: No pierde más de un segundo por host problemático
+        nmap -sn -PS22,80,443,445 -PE --min-rate 5000 --max-rtt-timeout 20ms --host-timeout 1s "$subnet" 2>/dev/null | grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' >> "$tmp_raw"
+    done
+
+    # 3. Limpiamos las IPs, eliminamos duplicados y la IP de nuestra propia máquina
+    my_ips=$(hostname -I)
+    sort -u "$tmp_raw" | grep -E '^[0-9]' | while read -r ip; do
+        # Si la IP encontrada coincide con una de nuestras IPs locales, la descartamos
+        if [[ ! " $my_ips " =~ " $ip " ]]; then
+            echo "$ip" >> "$tmp_clean"
+        fi
+    done
     rm -f "$tmp_raw"
 
     # 4. Pasar el archivo final a FZF
     if [ ! -s "$tmp_clean" ]; then
-        echo -e "${ROJO}❌ No se detectó ningún host activo en la red automáticamente.${RESET}"
+        echo -e "${ROJO}❌ No se detectó ningún host activo en las subredes automáticamente.${RESET}"
         echo -ne "${AMARILLO}Introduce la IP manualmente para empezar: ${RESET}"
         read -r target
         if [ -z "$target" ]; then echo -e "${ROJO}❌ Abortando.${RESET}"; rm -f "$tmp_clean"; exit 1; fi
     else
-        echo -e "${AZUL}Selecciona un objetivo de la lista con FZF:${RESET}"
-        # SOLUCIÓN MÁGICA: fzf lee directamente el archivo, sin tuberías que lo rompan
+        echo -e "\n${AZUL}Selecciona un objetivo de la lista con FZF:${RESET}"
         target=$(cat "$tmp_clean" | fzf --prompt="🎯 Selecciona la IP víctima: " --height=40% --layout=reverse --border)
     fi
 
@@ -399,7 +471,7 @@ echo -e
 if ! host "$target" &>/dev/null && ! ping -c 1 -W 1 -q "$target" &>/dev/null; then
     echo -e "${ROJO}⚠️  Atención: No se puede resolver o no hay respuesta de '$target'.${RESET}"
     echo -e -n "\n${AMARILLO}¿Deseas continuar de todos modos? (s/n): ${RESET}"
-    read confirm
+    read -r confirm
     [[ "$confirm" != "s" ]] && exit 1
 fi
 #Creación de carpeta y reporte .txt
@@ -477,118 +549,108 @@ while true; do
     # --- OPCIÓN 1: ESCANEO AUTOMÁTICO ---
     if [[ "$selection" == *"1."* ]] || [[ "$selection" == *"Automático"* ]]; then
         echo -e "\n${AZUL}🚀 Iniciando Escaneo Automático (Fase 1: Descubrimiento de puertos)${RESET}"
-        # Añadido --min-rate 300 para asegurar que el escaneo rápido no se quede atascado
-        flags="-sS -p- -n -Pn --open -v --min-rate 5000"
+        flags="-sS -p- -n -Pn --open --min-rate 5000"
 
-        echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}"
-        echo -e "🕒 INICIO AUTO-SCAN: $(date '+%d-%m-%Y %H:%M:%S')"
-        echo -e "🚀 COMANDO: nmap $flags $target"
-        echo -e "${AZUL}══════════════════════════════════════════════════${RESET}"
+        echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
+        echo -e "🕒 INICIO AUTO-SCAN: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+        echo -e "🚀 COMANDO: nmap $flags $target" | output_txt
+        echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
         
-        nmap $flags "$target" | tee /tmp/scan4me_fase1.txt
+        # Guardamos el descubrimiento y lo enviamos al log TXT si procede
+        nmap $flags "$target" | tee /tmp/scan4me_fase1.txt | output_txt
         open_ports=$(grep "/tcp" /tmp/scan4me_fase1.txt | cut -d/ -f1 | xargs | tr ' ' ',')
         rm -f /tmp/scan4me_fase1.txt
         
         if [ -z "$open_ports" ]; then
-            echo -e "\n${ROJO}❌ No se encontraron puertos abiertos con el escaneo rápido.${RESET}"
-            echo -e "${CYAN}⚠️ Procediendo a un segundo análisis más sigiloso para evadir firewalls...${RESET}"
+            echo -e "\n${ROJO}❌ No se encontraron puertos abiertos con el escaneo rápido.${RESET}" | output_txt
+            echo -e "${CYAN}⚠️ Procediendo a un segundo análisis más sigiloso para evadir firewalls...${RESET}" | output_txt
             
-            # SOLUCIÓN SIGILO: Escanea solo los top 1000 puertos a velocidad T3 (Evita cuelgues de horas)
-            flags_sigilo="-sF --top-ports 1000 -Pn -n -v --open -T3 --data-length 25 --spoof-mac cisco"
+            flags_sigilo="-sF --top-ports 1000 -Pn -n --open -T3 --data-length 25 --spoof-mac cisco"
             
-            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}"
-            echo -e "🕒 INICIO ESCANEO SIGILOSO: $(date '+%d-%m-%Y %H:%M:%S')"
-            echo -e "🚀 COMANDO: nmap $flags_sigilo $target"
-            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}"
+            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
+            echo -e "🕒 INICIO ESCANEO SIGILOSO: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+            echo -e "🚀 COMANDO: nmap $flags_sigilo $target" | output_txt
+            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
             
-            nmap $flags_sigilo "$target" | tee /tmp/scan4me_sigilo.txt
+            nmap $flags_sigilo "$target" | tee /tmp/scan4me_sigilo.txt | output_txt
             open_ports=$(grep "/tcp" /tmp/scan4me_sigilo.txt | cut -d/ -f1 | xargs | tr ' ' ',')
             rm -f /tmp/scan4me_sigilo.txt
             
             if [ -z "$open_ports" ]; then
-                echo -e "\n${ROJO}❌ Tampoco se detectaron puertos con el escaneo sigiloso. El host podría estar caído o protegido.${RESET}"
+                echo -e "\n${ROJO}❌ Tampoco se detectaron puertos con el escaneo sigiloso. El host podría estar caído o protegido.${RESET}" | output_txt
                 echo ""
                 read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
                 continue
             else
-                echo -e "\n${VERDE}✅ ¡Éxito! Puertos detectados mediante sigilo: $open_ports${RESET}"
+                echo -e "\n${VERDE}✅ ¡Éxito! Puertos detectados mediante sigilo: $open_ports${RESET}" | output_txt
             fi
         else
-            echo -e "\n${VERDE}✅ Puertos detectados correctamente: $open_ports${RESET}"
+            echo -e "\n${VERDE}✅ Puertos detectados correctamente: $open_ports${RESET}" | output_txt
         fi
 
-        # --- FLUJO DE EXPLOTACIÓN (Avanza si hay puertos) ---
+        # --- FLUJO DE EXPLOTACIÓN (Fase 2 y 3) ---
         echo
         echo -e "${AZUL}🚀 Fase 2: Escaneo de scripts y versiones...${RESET}"
-        flags="-sSCV -Pn -n -v -p"
+
+        current_time=$(date +%H%M%S)
+        archivo_fase2="$folder/nmap_auto_${target}_${current_time}_fase2"
+        archivo_fase3="$folder/nmap_auto_${target}_${current_time}_fase3"
+        flags_fase2="-sSCV -Pn -n -v -p"
+        flags_fase3="--script vuln -v -p"
 
         if [[ "$xml_status" == "ON" ]]; then
-            archivo_xml_fase2="$folder/nmap_auto_${target}_$(date +%H%M%S)_fase2"
-        
-            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" 
-            echo -e "🕒 INICIO AUTO-SCAN XML (Versiones): $(date '+%d-%m-%Y %H:%M:%S')" 
-            echo -e "🚀 COMANDO: nmap $flags $open_ports $target" 
-            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" 
+            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
+            echo -e "🕒 INICIO AUTO-SCAN XML (Versiones): $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+            echo -e "🚀 COMANDO: nmap $flags_fase2 $open_ports $target -oA $archivo_fase2" | output_txt
+            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
                 
-            nmap $flags $open_ports "$target" -oA "$archivo_xml_fase2"
+            # Ejecución con salida XML/Nmap y canalizada también hacia tu log TXT global
+            nmap $flags_fase2 $open_ports "$target" -oA "$archivo_fase2" | output_txt
 
             echo
             echo -e "${AZUL}🚀 Fase 3: Escaneo de vulnerabilidades...${RESET}"
-
-            flags="--script vuln -v -p"
-            archivo_xml_fase3="$folder/nmap_auto_${target}_$(date +%H%M%S)_fase3"
-
-            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" 
-            echo -e "🕒 INICIO AUTO-SCAN XML (Vuln): $(date '+%d-%m-%Y %H:%M:%S')"
-            echo -e "🚀 COMANDO: nmap $flags $open_ports $target"
-            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" 
-
+            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
+            echo -e "🕒 INICIO AUTO-SCAN XML (Vuln): $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+            echo -e "🚀 COMANDO: nmap $flags_fase3 $open_ports $target -oA $archivo_fase3" | output_txt
+            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
             echo -e "\n${CYAN}Este script puede tardar más tiempo, sobre todo si hay muchos puertos abiertos${RESET}\n"
             
-            nmap $flags $open_ports "$target" -oA "$archivo_xml_fase3"
+            nmap $flags_fase3 $open_ports "$target" -oA "$archivo_fase3" | output_txt
 
+            # Invocamos tu procesador automático de Writeups
             procesar_reportes
 
             echo -e "\n${AZUL}--------------------------------------------------${RESET}"
-            echo -e "\n${VERDE}✅ Resultados añadidos procesados en: $folder${RESET}"
+            echo -e "\n${VERDE}✅ Reportes completos XML, HTML y Markdown procesados en: $folder${RESET}"
             echo -e "\n${AZUL}--------------------------------------------------${RESET}"
-            echo -e "\n${VERDE}✅ Escaneo finalizado.${RESET}"
-            echo ""
-            read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
-            continue
-        fi
-    
-        if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando escaneo de versiones...${RESET}"; fi
-        echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
-        echo -e "🕒 INICIO AUTO-SCAN: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
-        echo -e "🚀 COMANDO: nmap $flags $open_ports $target" | output_txt
-        echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n" | output_txt
-        
-        nmap $flags $open_ports "$target" | output_txt
-        
-        echo
-        echo -e "${AZUL}🚀 Fase 3: Escaneo de vulnerabilidades...${RESET}"
-        
-        flags="--script vuln -p"
-        
-        if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando escaneo de vulnerabilidades...${RESET}"; fi
-        echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
-        echo -e "🕒 INICIO AUTO-SCAN: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
-        echo -e "🚀 COMANDO: nmap $flags $open_ports $target" | output_txt
-        echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n" | output_txt
+            echo -e "${AMARILLO}🧹 Si quieres coservar todos los archivos raw pulsa Control+C para salir directamente${RESET}"
+            echo -e "\n${AZUL}--------------------------------------------------${RESET}"
+            read -n 1 -s -r -p $'\e[1;5;32mEn caso contrario, pulsa cualquier tecla realizar una limpieza y dejar solo los reportes finales...\e[0m'
 
-        echo -e "${CYAN}Este script puede tardar más tiempo, sobre todo si hay muchos puertos abiertos${RESET}\n"
-       
-        nmap $flags $open_ports "$target" | output_txt
-            
-        [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}📄 Reporte guardado en: $reporte_txt${RESET}"
-        echo -e "\n${AZUL}--------------------------------------------------${RESET}"
+            # === 🧹 LIMPIEZA DE RUIDO INNECESARIO ===
+            # Borramos los archivos temporales de Nmap (.xml, .nmap, .gnmap)
+            # de las fases de esta sesión para dejar la carpeta impecable.
+            rm -f "${archivo_fase2}.xml" "${archivo_fase2}.nmap" "${archivo_fase2}.gnmap"
+            rm -f "${archivo_fase3}.xml" "${archivo_fase3}.nmap" "${archivo_fase3}.gnmap"
+
+            echo -e "\n${AZUL}--------------------------------------------------${RESET}"
+            echo -e "\n${VERDE}✅ Reportes limpios y estructurados listos en: $folder${RESET}"
+            echo -e "\n${AZUL}--------------------------------------------------${RESET}"
+        else
+            # Si XML está OFF, hacemos el flujo equivalente en texto plano para pantalla y log TXT
+            echo -e "\n${AZUL}🕒 INICIO AUTO-SCAN TEXTO (Versiones)...${RESET}" | output_txt
+            nmap $flags_fase2 $open_ports "$target" | output_txt
+
+            echo -e "\n${AZUL}🚀 Fase 3: Escaneo de vulnerabilidades (Texto)...${RESET}" | output_txt
+            nmap $flags_fase3 $open_ports "$target" | output_txt
+        fi
+
         echo -e "\n${VERDE}✅ Escaneo finalizado.${RESET}"
-        
-        echo
+        [[ "$txt_status" == "ON" ]] && echo -e "${VERDE}📄 Log unificado guardado en: $reporte_txt${RESET}"
+        echo ""
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
         continue
-    fi
+    fi 
 
     # --- OPCIÓN 2: SUBMENÚ NMAP ---
     if [[ "$selection" == *"Nmap (Submenú)"* ]]; then
