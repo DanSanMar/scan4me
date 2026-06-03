@@ -25,7 +25,7 @@ detectar_gestor() {
 GESTOR=$(detectar_gestor)
 
 # --- DEFINICIÓN DE DEPENDENCIAS ---
-dependencies=(fzf nmap whatweb feroxbuster wpscan xsltproc host arp-scan)
+dependencies=(fzf nmap whatweb feroxbuster wpscan xsltproc host arp-scan smbclient nbtscan enum4linux)
 
 
 # --- MAPEO DE NOMBRES DE PAQUETES  ---
@@ -174,7 +174,8 @@ function mostrar_logo() {
     echo ""
     echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░"
     echo -e "${AZUL}--[ Escaneo Interactivo de Red con multiherramientas ]--${RESET}"
-    echo -e "${BLANCO}--[ V 5.0 Reconocimiento de red + Nmap + Feroxbuster + SectList + Wpscan + Nmap Auto + Auto-install]--${RESET}"
+    echo -e "${BLANCO}--[ V 5.5 Auto-install + Auto-scan + Reconocimiento de red + Nmap + Feroxbuster ]--${RESET}"
+    echo -e "${BLANCO}--[+ SectList + Wpscan + Nmap Auto + scan4windows]--${RESET}"
     echo ""
 }
 
@@ -440,13 +441,14 @@ while true; do
     echo -e "${VERDE}🎯 Objetivo actual: ${BLANCO}$target${RESET} | ${AZUL}XML: ${xml_color}[$xml_status]${RESET} | ${MAGENTA}Guardar TXT: ${txt_color}[$txt_status]${RESET}\n"
     
     options=(
-        "📝 [CAMBIAR MODO GUARDADO TXT] -> Estado actual: $txt_status"
-        "⚙️  [CAMBIAR MODO CONFIG XML] -> Estado actual: $xml_status"
-        "1.  Escaneo Automático Nmap            | (-p- -sSCV + Vuln)"
+        "x   [CAMBIAR MODO GUARDADO TXT]        | Estado actual: $txt_status"
+        "x   [CAMBIAR MODO CONFIG XML]          | Estado actual: $xml_status"
+        "1.  Escaneo Automático Nmap (CTF)      | (-p- -sSCV + Vuln)"
         "2.  Otras opciones con Nmap (Submenú)  | nmap"
         "3.  Whatweb (Reconocimiento web)       | whatweb"
         "4.  Feroxbuster (fuzzing web)          | feroxbuster"    
         "5.  Wpscan (reconocimiento wordpress)  | wpscan" 
+        "6.  Otras opciones (solo windows)      | windows" 
         "x.            -- SALIR --              | exit"
     )
 
@@ -472,111 +474,136 @@ while true; do
         continue
     fi
 
-    # --- OPCIÓN 1: ESCANEO AUTOMÁTICO  ---
+    # --- OPCIÓN 1: ESCANEO AUTOMÁTICO ---
     if [[ "$selection" == *"1."* ]] || [[ "$selection" == *"Automático"* ]]; then
         echo -e "\n${AZUL}🚀 Iniciando Escaneo Automático (Fase 1: Descubrimiento de puertos)${RESET}"
-        flags="-sS -p- -n -Pn --open -T4"
+        # Añadido --min-rate 300 para asegurar que el escaneo rápido no se quede atascado
+        flags="-sS -p- -n -Pn --open -v --min-rate 5000"
 
         echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}"
         echo -e "🕒 INICIO AUTO-SCAN: $(date '+%d-%m-%Y %H:%M:%S')"
         echo -e "🚀 COMANDO: nmap $flags $target"
         echo -e "${AZUL}══════════════════════════════════════════════════${RESET}"
         
-        open_ports=$(nmap $flags "$target" | grep "/tcp" | cut -d/ -f1 | xargs | tr ' ' ',')
+        nmap $flags "$target" | tee /tmp/scan4me_fase1.txt
+        open_ports=$(grep "/tcp" /tmp/scan4me_fase1.txt | cut -d/ -f1 | xargs | tr ' ' ',')
+        rm -f /tmp/scan4me_fase1.txt
         
         if [ -z "$open_ports" ]; then
-            echo -e "${ROJO}❌ No se encontraron puertos abiertos.${RESET}"
-        else
-            echo -e "\n${VERDE}✅ Puertos encontrados: $open_ports${RESET}"
-            echo
-            echo -e "${AZUL}🚀 Fase 2: Escaneo de scripts y versiones...${RESET}"
+            echo -e "\n${ROJO}❌ No se encontraron puertos abiertos con el escaneo rápido.${RESET}"
+            echo -e "${CYAN}⚠️ Procediendo a un segundo análisis más sigiloso para evadir firewalls...${RESET}"
             
-            flags="-sSCV -Pn -n -p"
-
-            if [[ "$xml_status" == "ON" ]]; then
-                archivo_xml="$folder/nmap_auto_${target}_$(date +%H%M%S)"
+            # SOLUCIÓN SIGILO: Escanea solo los top 1000 puertos a velocidad T3 (Evita cuelgues de horas)
+            flags_sigilo="-sF --top-ports 1000 -Pn -n -v --open -T3 --data-length 25 --spoof-mac cisco"
             
-                echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" 
-                echo -e "🕒 INICIO AUTO-SCAN XML: $(date '+%d-%m-%Y %H:%M:%S')" 
-                echo -e "🚀 COMANDO: nmap $flags $target" 
-                echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" 
-                    
-                nmap $flags $open_ports "$target" -oA "$archivo_xml"
-
-                echo
-                echo -e "${AZUL}🚀 Fase 3: Escaneo de vulnerabilidades...${RESET}"
-
-                flags="--script vuln -p"
-
-                echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" 
-                echo -e "🕒 INICIO AUTO-SCAN XML: $(date '+%d-%m-%Y %H:%M:%S')"
-                echo -e "🚀 COMANDO: nmap $flags $target"
-                echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" 
-
-                echo -e "\n${CYAN}Este script puede tardar más tiempo, sobre todo si hay muchos puertos abiertos${RESET}\n"
-                
-                nmap $flags $open_ports "$target" -oA "$archivo_xml"
-
-                procesar_reportes
-
-                echo -e "\n${AZUL}--------------------------------------------------${RESET}"
-                echo -e "\n${VERDE}✅ Resultados añadidos procesados en: $archivo_xml${RESET}"
-                echo -e "\n${AZUL}--------------------------------------------------${RESET}"
-                echo -e "\n${VERDE}✅ Escaneo finalizado.${RESET}"
+            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}"
+            echo -e "🕒 INICIO ESCANEO SIGILOSO: $(date '+%d-%m-%Y %H:%M:%S')"
+            echo -e "🚀 COMANDO: nmap $flags_sigilo $target"
+            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}"
+            
+            nmap $flags_sigilo "$target" | tee /tmp/scan4me_sigilo.txt
+            open_ports=$(grep "/tcp" /tmp/scan4me_sigilo.txt | cut -d/ -f1 | xargs | tr ' ' ',')
+            rm -f /tmp/scan4me_sigilo.txt
+            
+            if [ -z "$open_ports" ]; then
+                echo -e "\n${ROJO}❌ Tampoco se detectaron puertos con el escaneo sigiloso. El host podría estar caído o protegido.${RESET}"
                 echo ""
                 read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
                 continue
+            else
+                echo -e "\n${VERDE}✅ ¡Éxito! Puertos detectados mediante sigilo: $open_ports${RESET}"
             fi
+        else
+            echo -e "\n${VERDE}✅ Puertos detectados correctamente: $open_ports${RESET}"
+        fi
+
+        # --- FLUJO DE EXPLOTACIÓN (Avanza si hay puertos) ---
+        echo
+        echo -e "${AZUL}🚀 Fase 2: Escaneo de scripts y versiones...${RESET}"
+        flags="-sSCV -Pn -n -v -p"
+
+        if [[ "$xml_status" == "ON" ]]; then
+            archivo_xml_fase2="$folder/nmap_auto_${target}_$(date +%H%M%S)_fase2"
         
-            if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando escaneo de versiones...${RESET}"; fi
-            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
-            echo -e "🕒 INICIO AUTO-SCAN: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
-            echo -e "🚀 COMANDO: nmap $flags $open_ports $target" | output_txt
-            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n" | output_txt
-            
-            nmap $flags $open_ports "$target" | output_txt
-            
+            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" 
+            echo -e "🕒 INICIO AUTO-SCAN XML (Versiones): $(date '+%d-%m-%Y %H:%M:%S')" 
+            echo -e "🚀 COMANDO: nmap $flags $open_ports $target" 
+            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" 
+                
+            nmap $flags $open_ports "$target" -oA "$archivo_xml_fase2"
+
             echo
             echo -e "${AZUL}🚀 Fase 3: Escaneo de vulnerabilidades...${RESET}"
-            
-            flags="--script vuln -p"
-            
-            if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando escaneo de vulnerabilidades...${RESET}"; fi
-            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
-            echo -e "🕒 INICIO AUTO-SCAN: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
-            echo -e "🚀 COMANDO: nmap $flags $open_ports $target" | output_txt
-            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n" | output_txt
 
-            echo -e "${CYAN}Este script puede tardar más tiempo, sobre todo si hay muchos puertos abiertos${RESET}\n"
-           
-            nmap $flags $open_ports "$target" | output_txt
+            flags="--script vuln -v -p"
+            archivo_xml_fase3="$folder/nmap_auto_${target}_$(date +%H%M%S)_fase3"
 
-                
-            [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}📄 Reporte guardado en: $reporte_txt${RESET}"
+            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" 
+            echo -e "🕒 INICIO AUTO-SCAN XML (Vuln): $(date '+%d-%m-%Y %H:%M:%S')"
+            echo -e "🚀 COMANDO: nmap $flags $open_ports $target"
+            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" 
+
+            echo -e "\n${CYAN}Este script puede tardar más tiempo, sobre todo si hay muchos puertos abiertos${RESET}\n"
+            
+            nmap $flags $open_ports "$target" -oA "$archivo_xml_fase3"
+
+            procesar_reportes
+
+            echo -e "\n${AZUL}--------------------------------------------------${RESET}"
+            echo -e "\n${VERDE}✅ Resultados añadidos procesados en: $folder${RESET}"
             echo -e "\n${AZUL}--------------------------------------------------${RESET}"
             echo -e "\n${VERDE}✅ Escaneo finalizado.${RESET}"
+            echo ""
+            read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
+            continue
         fi
+    
+        if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando escaneo de versiones...${RESET}"; fi
+        echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
+        echo -e "🕒 INICIO AUTO-SCAN: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+        echo -e "🚀 COMANDO: nmap $flags $open_ports $target" | output_txt
+        echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n" | output_txt
+        
+        nmap $flags $open_ports "$target" | output_txt
+        
+        echo
+        echo -e "${AZUL}🚀 Fase 3: Escaneo de vulnerabilidades...${RESET}"
+        
+        flags="--script vuln -p"
+        
+        if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando escaneo de vulnerabilidades...${RESET}"; fi
+        echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
+        echo -e "🕒 INICIO AUTO-SCAN: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+        echo -e "🚀 COMANDO: nmap $flags $open_ports $target" | output_txt
+        echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n" | output_txt
+
+        echo -e "${CYAN}Este script puede tardar más tiempo, sobre todo si hay muchos puertos abiertos${RESET}\n"
+       
+        nmap $flags $open_ports "$target" | output_txt
+            
+        [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}📄 Reporte guardado en: $reporte_txt${RESET}"
+        echo -e "\n${AZUL}--------------------------------------------------${RESET}"
+        echo -e "\n${VERDE}✅ Escaneo finalizado.${RESET}"
+        
         echo
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
         continue
     fi
 
-    # --- OPCIÓN 2: SUBMENÚ NMAP (CORREGIDO) ---
+    # --- OPCIÓN 2: SUBMENÚ NMAP ---
     if [[ "$selection" == *"Nmap (Submenú)"* ]]; then
         sub_options=(
-            "1.  [TCP] Reconocimiento Rápido (OS/Versión) | -sS -O -sV -Pn -T4"
-            "2.  [TCP] Escaneo de Puertos Totales (p-)    | -sS -p- -Pn -T4"
-            "3.  [TCP] Enumeración de Servicios (sCV)     | -sSCV -Pn -p"
-            "4.  [TCP] Escaneo Agresivo Completo (-A)     | -A -T4 -Pn"
-            "5.  [VULN] Escaneo de Vulnerabilidades       | --script vuln -Pn -p"
-            "6.  [EVASIÓN] Mapeo de Firewall (ACK Scan)   | -sA -Pn -T4"
-            "7.  [EVASIÓN] Bypass (Señuelos + DNS Src)    | -sS -Pn -f -D RND:5 -g 53 --data-length 25 -T2"
+            "1.  [TCP] Reconocimiento Rápido OS           | -sS -O -Pn -n -vvv -T4"
+            "2.  [TCP] Escaneo de Puertos Totales (p-)    | -sS -p- -Pn -n --min-rate 5000"
+            "3.  [TCP] Escaneo Agresivo Completo (-A)     | -A -Pn -v"
+            "4.  [TCP] Enumeración de Servicios (sCV)     | -sS -sCV -Pn -v -p"
+            "5.  [VULN] Escaneo de Vulnerabilidades       | --script vuln -v -Pn -p"
+            "6.  [EVASIÓN] Mapeo de Firewall (ACK Scan)   | -sA -Pn -vv -T4"
+            "7.  [EVASIÓN] Bypass (Señuelos + DNS Src)    | -sS -Pn -vv -f -D RND:5 -g 53 --data-length 25 --max-rate 100"
             "8.  [UDP] Discovery Rápido (Top 20 Puertos)  | -sU -Pn --top-ports 20 -T4"
             "9.  [UDP] Investigación Profunda (Versiones) | -sU -sV -Pn -p"
-            "10. [LOCAL] Enumeración SMB (Carpetas/OS)    | --script smb-os-discovery,smb-enum-shares -p 139,445 -Pn"
-            "11. [LOCAL] Enumeración NetBIOS (UDP 137)    | -sU -p 137 --script nbstat -Pn"
-            "12. [WEB] Recon Básica (Enum, Robots, Title) | --script http-enum,http-robots.txt,http-title -p 80,443 -Pn"
-            "13. [WEB] Recon Completo (Vulns Web)         | --script http-vuln-* -p 80,443 -Pn"
+            "10. [WEB] Recon Básica (Enum, Robots, Title) | --script http-enum,http-robots.txt,http-title -p 80,443 -Pn"
+            "11. [WEB] Recon Completo (Vulns Web)         | --script http-vuln-* -p 80,443 -v -Pn"
             "b. << Volver al menú principal"
         )
         
@@ -685,6 +712,70 @@ while true; do
         
         [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}✅ Resultados en: $reporte_txt${RESET}"
         echo ""   
+        read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
+        continue
+    fi
+    # --- OPCIÓN 6: SUBMENÚ WINDOWS ---
+    if [[ "$selection" == *"windows"* ]]; then
+        sub_options=(
+            "1.  [Nmap] Enumeración SMB Básica (Carpetas/OS)   | nmap --script smb-os-discovery,smb-enum-shares -p 139,445 -Pn"
+            "2.  [Nmap] Enumeración NetBIOS (UDP 137)          | nmap -sU -p 137 --script nbstat -Pn"
+            "3.  [Nmap] Escaneo de Vulnerabilidades SMB        | nmap --script smb-vuln* -p 139,445 -Pn"
+            "4.  [SMBClient] Listar recursos (Sesión Nula)     | smbclient -L //$target -N"
+            "5.  [Nbtscan] Escaneo NetBIOS rápido              | nbtscan -r $target"
+            "6.  [Enum4Linux] Enumeración completa             | enum4linux -a $target"
+            "x.  << Volver al menú principal                   | back"
+        )
+        
+        sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="🪟 Opciones específicas para Windows: " --height=25% --layout=reverse --border)
+        
+        [[ "$sub_selection" == *"Volver"* || -z "$sub_selection" ]] && continue
+
+        # Extraemos el comando (lo que está a la derecha del '|')
+        cmd_raw=$(echo "$sub_selection" | awk -F "|" '{print $2}' | xargs)
+
+        # Separamos la lógica: Nmap soporta XML, las demás herramientas NO.
+        if [[ "$cmd_raw" == nmap* ]]; then
+            # Es un comando Nmap
+            flags=${cmd_raw#nmap } # Quitamos 'nmap ' del string para quedarnos solo con las flags
+            
+            if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando Nmap (Recon Windows)...${RESET}"; fi
+            
+            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
+            echo -e "🕒 INICIO WINDOWS RECON: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+            echo -e "🚀 COMANDO: nmap $flags $target" | output_txt
+            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n" | output_txt
+           
+            if [[ "$xml_status" == "ON" ]]; then
+                archivo_xml="$folder/windows_recon_${target}_$(date +%H%M%S).xml"
+                nmap $flags -oX "$archivo_xml" "$target" | output_txt
+                echo -e "\n${VERDE}🌐 XML guardado en: $archivo_xml${RESET}"
+            else
+                nmap $flags "$target" | output_txt
+            fi
+
+        else
+            # Es otra herramienta (smbclient, nbtscan, enum4linux)
+            if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando herramienta externa...${RESET}"; fi
+            
+            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
+            echo -e "🕒 INICIO WINDOWS RECON: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+            echo -e "🚀 COMANDO: $cmd_raw" | output_txt
+            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n" | output_txt
+
+            # Usamos eval para que bash interprete la variable $target dentro del string cmd_raw
+            eval "$cmd_raw" 2>&1 | output_txt
+
+            if [[ "$xml_status" == "ON" ]]; then
+                echo -e "\n${AMARILLO}⚠️ Nota: El formato XML automático de este script solo soporta comandos Nmap. El resultado se ha mostrado en pantalla y guardado en TXT (si está activado).${RESET}"
+            fi
+        fi
+
+        [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}📄 Reporte guardado en: $reporte_txt${RESET}"
+        echo -e "\n${AZUL}--------------------------------------------------${RESET}"
+        echo -e "${VERDE}✅ Escaneo de Windows finalizado.${RESET}"
+        
+        echo
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
         continue
     fi
