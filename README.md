@@ -46,47 +46,93 @@ El script requiere la wordlist `common.txt` de SecLists para las funciones de fu
 
 ## 🚀 Instalación y Uso
 
-### Clonar el repositorio
-```bash
-git clone [https://github.com/DanSanMar/scan4me.git](https://github.com/DanSanMar/scan4me.git)
+### Clonar el repositorio y preparar el entorno
+
+Bash
+
+```
+git clone https://github.com/DanSanMar/scan4me.git
 cd scan4me
 chmod +x scan4me.sh
-Ejecución
-El script debe ejecutarse siempre con privilegios elevados (sudo).
+```
 
-1. Modo Objetivo Definido
-Bash
-sudo ./scan4me.sh <IP_O_DOMINIO>
-Ejemplo para escanear un host web definiendo un subdirectorio o subdominio específico para WPScan:
+### Ejecución
+
+El script debe ejecutarse siempre con privilegios elevados (`sudo`).
+
+#### 1. Modo Objetivo Definido
 
 Bash
+
+```
+sudo ./scan4me.sh <IP_O_DOMINIO> [SUBDIRECTORIO]
+```
+
+Si deseas realizar un escaneo web en un CMS que no está en la raíz, puedes pasar el subdirectorio como segundo argumento.
+
+_Ejemplo de uso:_
+
+Bash
+
+```
 sudo ./scan4me.sh 172.17.0.2 /wordpress
-2. Modo Autodetección de Red
+```
+
+#### 2. Modo Autodetección de Red (Si se omite el objetivo)
+
 Bash
+
+```
 sudo ./scan4me.sh
-Si se omite el argumento, el script escaneará la red local de forma pasiva/activa y desplegará un menú interactivo en fzf para seleccionar el host víctima descubierto.
+```
 
-📖 Flujo de Trabajo del Menú Interactivo
-Una vez iniciado, se despliega una interfaz gráfica en la terminal donde podrás conmutar opciones y lanzar auditorías:
+Si ejecutas el script sin argumentos, iniciará una fase automática de descubrimiento en tu subred local combinando `arp-scan` y un barrido de ping con `nmap`. Al finalizar, desplegará un menú interactivo con `fzf` para que elijas cómodamente el host objetivo.
 
-Conmutadores Globales (en caliente):
+SH
 
-Cambiar Modo Guardado TXT: Activa/Desactiva el volcado del escaneo actual en la carpeta de auditoría (.txt).
+## 📖 Flujo de Trabajo del Menú Interactivo
 
-Cambiar Modo Config XML: Activa/Desactiva los reportes detallados en Nmap junto con la posterior generación del Kit de Writeup (.md y .html).
+Al iniciar la herramienta, verás una interfaz en la terminal que te permite alternar configuraciones en tiempo real y lanzar diferentes vectores de auditoría mediante un menú visual con `fzf`:
 
-Escaneo Automático Nmap (Opción 1): Realiza un descubrimiento inteligente de puertos abiertos (-p-), seguido de un análisis agresivo de versiones/scripts (-sSCV) y un escaneo específico de vulnerabilidades (--script vuln). Incorpora un mecanismo automático de evasión sigilosa si el host bloquea los escaneos masivos.
+### Conmutadores Globales (Modificaciones en caliente)
 
-Submenú Nmap Avanzado (Opción 2): Menú especializado con 11 categorías preconfiguradas que incluyen evasión de Firewalls (ACK Scan, Señuelos, fragmentación), escaneos agresivos, auditoría web técnica y descubrimientos UDP profundos.
+- **`[CAMBIAR MODO GUARDADO TXT]`**: Activa o desactiva el volcado y almacenamiento de la salida de los escaneos dentro de un archivo centralizado `.txt` en la carpeta de auditoría.
+    
+- **`[CAMBIAR MODO CONFIG XML]`**: Activa o desactiva la generación de reportes estructurados XML en `nmap`. Si está en `ON`, al finalizar un escaneo automático se compilará el **Kit de Writeup** (generando un archivo HTML interactivo y un resumen ejecutivo en Markdown `.md`).
+    
+    SH
+    
 
-Herramientas Web (Opciones 3, 4 y 5): Lanzamiento directo de reconocimientos tecnológicos con WhatWeb, Fuzzing de extensiones críticas con Feroxbuster o auditoría de CMS con WPScan.
+### Módulos de Auditoría Disponibles
 
-Opciones específicas para Windows (Opción 6): Submenú dedicado al entorno Windows. Permite realizar auditorías de vulnerabilidades SMB (smb-vuln*), escaneos rápidos NetBIOS (nbtscan), listar recursos compartidos por sesión nula (smbclient) y una enumeración completa usando enum4linux.
+- **Escaneo Automático Nmap (Opción 1):** Realiza un descubrimiento inicial ultrarrápido de todos los puertos abiertos (`-p-`). Si no detecta nada, activa automáticamente un **segundo análisis sigiloso de evasión** (escaneando el _Top 1000_ con técnicas de fragmentación y suplantación de MAC). Tras hallar puertos válidos, ejecuta de forma secuencial la detección de servicios/versiones (`-sSCV`) y el análisis de vulnerabilidades (`--script vuln`).
+    
+    SH
+    
+- **Otras opciones con Nmap (Opción 2):** Submenú avanzado que incluye **11 modalidades** de escaneo especializado: auditorías agresivas, descubrimientos UDP (rápidos y profundos), mapeos ACK de cortafuegos y técnicas avanzadas de _bypass_ usando señuelos y tasas de transferencia controladas.
+    
+    SH
+    
+- **Herramientas Web (Opciones 3, 4 y 5):**
+    
+    - **WhatWeb:** Reconocimiento pasivo/activo de tecnologías, servidores y cabeceras HTTP.
+        
+    - **Feroxbuster:** Fuzzing web rápido y directo utilizando el diccionario _SecLists_ enfocado en extensiones críticas (`.bak`, `.zip`, `.sql`, etc.) de forma no recursiva.
+        
+    - **WPScan:** Auditoría agresiva y enumeración de usuarios y plugins vulnerables en plataformas WordPress.
+        
+- **Otras opciones - Solo Windows (Opción 6):** Submenú enfocado exclusivamente en la enumeración de entornos Microsoft. Integra scripts de `nmap` para vulnerabilidades SMB y NetBIOS, listado de recursos compartidos mediante sesiones nulas con `smbclient`, escaneos NetBIOS rápidos con `nbtscan` y análisis exhaustivos mediante `enum4linux`.
+    
+    SH
+    
 
-⚠️ Advertencias de Seguridad
-Uso Ético: Esta herramienta está diseñada únicamente para auditorías de seguridad autorizadas. El escaneo de redes o sistemas sin permiso explícito es ilegal.
+## ⚠️ Advertencias de Seguridad
 
-Ruido en la Red: Ciertas opciones del submenú avanzado (como escaneos UDP intrusivos, auditorías Windows agresivas o fuerza bruta invasiva con Feroxbuster) generan alto tráfico y alertarán con facilidad a sistemas de detección de intrusos (IDS/IPS).
+- **Uso Ético:** Esta herramienta ha sido diseñada con fines estrictamente educativos y para auditorías de seguridad autorizadas. El escaneo de infraestructuras o sistemas sin una autorización explícita es ilegal y punible por la ley.
+    
+- **Ruido en la Red:** Ten en cuenta que varias de las opciones avanzadas (como los escaneos de vulnerabilidades masivos, las ráfagas de fuerza bruta de `feroxbuster` o los escaneos UDP intensivos) generan un volumen muy alto de tráfico, por lo que serán detectadas con facilidad por sistemas IDS/IPS o Firewalls activos.
+    
 
-📄 Licencia
-Este proyecto está bajo la Licencia MIT. Consulta el archivo LICENSE para más detalles.
+## 📄 Licencia
+
+Este proyecto está distribuido bajo la **Licencia MIT**. Siéntete libre de modificarlo, adaptarlo y compartirlo. Consulta el archivo `LICENSE` para más detalles.
