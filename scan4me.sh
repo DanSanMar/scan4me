@@ -25,7 +25,7 @@ detectar_gestor() {
 GESTOR=$(detectar_gestor)
 
 # --- DEFINICIÓN DE DEPENDENCIAS ---
-dependencies=(fzf nmap whatweb feroxbuster wpscan xsltproc host arp-scan smbclient nbtscan enum4linux)
+dependencies=(fzf nmap whatweb feroxbuster wpscan xsltproc host arp-scan smbclient nbtscan enum4linux gobuster)
 
 
 # --- MAPEO DE NOMBRES DE PAQUETES  ---
@@ -155,6 +155,40 @@ mostrar_instrucciones() {
     fi
 }
 
+function buscar_subdominios() {
+    # Verificar si el target parece un dominio o host válido, no una IP pura
+    if [[ "$target" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        echo -e "${ROJO}❌ Error: La búsqueda de subdominios requiere un dominio (ej: target.local), no una IP (${target}).${RESET}"
+        read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver... \e[0m'
+        return
+    fi
+
+    # Comprobar si tenemos SecLists
+    if [ -z "$wordlist" ]; then
+        echo -e "${ROJO}❌ Error: Se requiere SecLists para esta función.${RESET}"
+        read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver... \e[0m'
+        return
+    fi
+
+    # Intentar localizar un diccionario de subdominios en SecLists, si no usa el común
+    local sub_wordlist="${wordlist%/*/*}/Discovery/DNS/subdomains-top1million-5000.txt"
+    if [ ! -f "$sub_wordlist" ]; then
+        sub_wordlist="$wordlist" # Fallback al common.txt de web-content si no encuentra el de DNS
+    fi
+
+    if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando GoBuster DNS...${RESET}"; fi
+    echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
+    echo -e "🕒 INICIO SUBDOMINIOS (GoBuster): $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+    echo -e "🚀 COMANDO: gobuster dns -d $target -w $sub_wordlist -t 50 --show-ips" | output_txt
+    echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
+
+    gobuster dns -d "$target" -w "$sub_wordlist" -t 50 --show-ips | output_txt
+
+    [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}✅ Resultados guardados en: $reporte_txt${RESET}"
+    echo ""
+    read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
+}
+
 function procesar_reportes() {
     # Aseguramos que la carpeta existe y no está vacía
     local backup_folder="Auditoria_${target}_$(date +%d-%m-%Y)"
@@ -281,10 +315,10 @@ function mostrar_logo() {
     echo "     ██║  ██║███████╗███████╗      ██║██║ ╚═╝ ██║███████╗"
     echo "     ╚═╝  ╚═╝╚══════╝╚══════╝      ╚═╝╚═╝     ╚═╝╚══════╝"
     echo ""
-    echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░ --[ V 5.6 ]--"
+    echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░ --[ V 5.7 ]--"
     echo -e "${AZUL}--[ Escaneo Interactivo de Red con multiherramientas ]--${RESET}"
     echo -e "${BLANCO}--===============================================================${RESET}"
-    echo -e "${BLANCO}--[ Auto-install + Auto-scan + Reconocimiento de red + Nmap + ]--${RESET}"
+    echo -e "${BLANCO}--[ Auto-install + Auto-scan + Recon Red + Gobuster + Nmap +  ]--${RESET}"
     echo -e "${BLANCO}--[ Feroxbuster + SectList + Wpscan + Nmap Auto + scan4windows]--${RESET}"
     echo ""
 }
@@ -518,9 +552,10 @@ while true; do
         "1.  Escaneo Automático Nmap (CTF)      | (-p- -sSCV + Vuln)"
         "2.  Otras opciones con Nmap (Submenú)  | nmap"
         "3.  Whatweb (Reconocimiento web)       | whatweb"
-        "4.  Feroxbuster (fuzzing web)          | feroxbuster"    
-        "5.  Wpscan (reconocimiento wordpress)  | wpscan" 
-        "6.  Otras opciones (solo windows)      | windows" 
+        "4.  Gobuster (Fuzzing Subdominios)     | subdomains"
+        "5.  Feroxbuster (fuzzing web)          | feroxbuster"    
+        "6.  Wpscan (reconocimiento wordpress)  | wpscan" 
+        "7.  Otras opciones (solo windows)      | windows" 
         "x.            -- SALIR --              | exit"
     )
 
@@ -777,6 +812,12 @@ while true; do
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
         continue
     fi
+
+    if [[ "$selection" == *"subdomains"* ]] || [[ "$selection" == *"Gobuster"* ]]; then
+        buscar_subdominios
+        continue
+    fi
+
     # --- OPCIÓN 6: SUBMENÚ WINDOWS ---
     if [[ "$selection" == *"windows"* ]]; then
         sub_options=(
