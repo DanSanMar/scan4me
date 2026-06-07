@@ -156,35 +156,50 @@ mostrar_instrucciones() {
 }
 
 function buscar_subdominios() {
-    # Verificar si el target parece un dominio o host válido, no una IP pura
-    if [[ "$target" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-        echo -e "${ROJO}❌ Error: La búsqueda de subdominios requiere un dominio (ej: target.local), no una IP (${target}).${RESET}"
+    # 1. Comprobar si el target está vacío
+    if [ -z "$target" ]; then
+        echo -e "${ROJO}❌ Error: No se ha seleccionado ningún objetivo.${RESET}"
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver... \e[0m'
         return
     fi
 
-    # Comprobar si tenemos SecLists
+    # 2. Comprobar si el target es una IP pura. Si es una IP, no se pueden buscar subdominios.
+    if [[ "$target" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        echo -e "${ROJO}❌ Error: La búsqueda de subdominios requiere un DOMINIO (ej: otonesmiguelanez.com), actualmente tienes una IP asignada (${target}).${RESET}"
+        read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver... \e[0m'
+        return
+    fi
+
+    # 3. Comprobar diccionario
     if [ -z "$wordlist" ]; then
         echo -e "${ROJO}❌ Error: Se requiere SecLists para esta función.${RESET}"
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver... \e[0m'
         return
     fi
 
-    # Intentar localizar un diccionario de subdominios en SecLists, si no usa el común
+    # --- LIMPIEZA TOTAL Y SEGURA ---
+    local dominio_limpio="${target#*://}" # Quita http:// o https:// si los hubiera
+    dominio_limpio="${dominio_limpio#www.}"       # Quita www.
+    dominio_limpio="${dominio_limpio%/}"          # Quita / al final
+    dominio_limpio=$(echo "$dominio_limpio" | tr -d '[:space:]') # Quita espacios invisibles
+
+    # --- CORRECCIÓN DE DICCIONARIO PARA DNS ---
+    # Intentamos saltar de Web-Content a Discovery/DNS de SecLists automáticamente
     local sub_wordlist="${wordlist%/*/*}/Discovery/DNS/subdomains-top1million-5000.txt"
     if [ ! -f "$sub_wordlist" ]; then
-        sub_wordlist="$wordlist" # Fallback al common.txt de web-content si no encuentra el de DNS
+        sub_wordlist="$wordlist" 
     fi
 
     if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando GoBuster DNS...${RESET}"; fi
     echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
     echo -e "🕒 INICIO SUBDOMINIOS (GoBuster): $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
-    echo -e "🚀 COMANDO: gobuster dns -d $target -w $sub_wordlist -t 50 --show-ips" | output_txt
+    echo -e "🚀 COMANDO: gobuster dns --domain=${dominio_limpio} -w ${sub_wordlist} -t 50" | output_txt
     echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
 
-    gobuster dns -d "$target" -w "$sub_wordlist" -t 50 --show-ips | output_txt
+    # Ejecución definitiva
+    gobuster dns --domain="${dominio_limpio}" -w "${sub_wordlist}" -t 50 | output_txt
 
-    [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}✅ Resultados guardados en: $reporte_txt${RESET}"
+    [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}✅ Resultados en: $reporte_txt${RESET}"
     echo ""
     read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
 }
