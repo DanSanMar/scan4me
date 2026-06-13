@@ -25,8 +25,7 @@ detectar_gestor() {
 GESTOR=$(detectar_gestor)
 
 # --- DEFINICIÓN DE DEPENDENCIAS ---
-dependencies=(fzf nmap whatweb feroxbuster wpscan xsltproc host arp-scan smbclient nbtscan enum4linux gobuster)
-
+dependencies=(fzf nmap whatweb feroxbuster wpscan xsltproc host arp-scan smbclient nbtscan enum4linux gobuster whois dnsrecon wafw00f sublist3r curl subfinder)
 
 # --- MAPEO DE NOMBRES DE PAQUETES  ---
 get_package_name() {
@@ -330,11 +329,11 @@ function mostrar_logo() {
     echo "     ██║  ██║███████╗███████╗      ██║██║ ╚═╝ ██║███████╗"
     echo "     ╚═╝  ╚═╝╚══════╝╚══════╝      ╚═╝╚═╝     ╚═╝╚══════╝"
     echo ""
-    echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░ --[ V 5.7 ]--"
+    echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░ --[ V 5.8 ]--"
     echo -e "${AZUL}--[ Escaneo Interactivo de Red con multiherramientas ]--${RESET}"
     echo -e "${BLANCO}--===============================================================${RESET}"
-    echo -e "${BLANCO}--[ Auto-install + Auto-scan + Recon Red + Gobuster + Nmap +  ]--${RESET}"
-    echo -e "${BLANCO}--[ Feroxbuster + SectList + Wpscan + Nmap Auto + scan4windows]--${RESET}"
+    echo -e "${BLANCO}--[ Auto-install + Auto-scan + Red Recon + Gobuster + Nmap +  ]--${RESET}"
+    echo -e "${BLANCO}--[ Feroxbuster + SectList + Wpscan + OSINT + scan4windows]--${RESET}"
     echo ""
 }
 
@@ -570,7 +569,8 @@ while true; do
         "4.  Gobuster (Fuzzing Subdominios)     | subdomains"
         "5.  Feroxbuster (fuzzing web)          | feroxbuster"    
         "6.  Wpscan (reconocimiento wordpress)  | wpscan" 
-        "7.  Otras opciones (solo windows)      | windows" 
+        "7.  Otras opciones (solo windows)      | windows"
+        "8.  Reconocimiento Pasivo / OSINT      | footprinting" 
         "x.            -- SALIR --              | exit"
     )
 
@@ -892,6 +892,80 @@ while true; do
         [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}📄 Reporte guardado en: $reporte_txt${RESET}"
         echo -e "\n${AZUL}--------------------------------------------------${RESET}"
         echo -e "${VERDE}✅ Escaneo de Windows finalizado.${RESET}"
+        
+        echo
+        read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
+        continue
+    fi
+
+        # --- OPCIÓN 8: SUBMENÚ RECONOCIMIENTO PASIVO (FOOTPRINTING) ---
+    if [[ "$selection" == *"footprinting"* ]]; then
+        
+        # 1. Limpieza estricta para herramientas de dominio (WHOIS, DNSRecon, Sublist3r, Subfinder)
+        dominio_limpio="${target#*://}"
+        dominio_limpio="${dominio_limpio#www.}" 
+        dominio_limpio="${dominio_limpio%/}"
+
+        # 2. Construcción INTELIGENTE de la URL para herramientas Web (WAFW00F)
+        # Extraemos lo que hay después del protocolo, pero CONSERVANDO el 'www.' si existía
+        host_web="${target#*://}"
+        host_web="${host_web%/}"
+
+        url_osint="$target"
+        if [[ ! "$url_osint" =~ ^https?:// ]]; then
+            # Si el host_web tiene forma de IP pura
+            if [[ "$host_web" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+                url_osint="http://$host_web"
+            else
+                # Si es un dominio, respetamos si lleva www. o no y usamos HTTPS
+                url_osint="https://$host_web"
+            fi
+        fi
+
+        # 3. Comprobamos si el host web es una IP para bifurcar el menú
+        if [[ "$host_web" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+            # MENÚ RESTRINGIDO PARA IPs
+            sub_options=(
+                "1.  [WHOIS] Registro y Contactos del ASN/IP      | whois $host_web"
+                "2.  [WAFW00F] Detección de Firewall Web (WAF)    | wafw00f $url_osint"
+                "3.  [OSINT] Reverse IP Lookup (HackerTarget)     | curl -s https://api.hackertarget.com/reverseiplookup/?q=$host_web"
+                "x.  << Volver al menú principal                  | back"
+            )
+            prompt_text="🕵️ OSINT (Modo IP): "
+        else
+            # MENÚ COMPLETO PARA DOMINIOS (Incluye Sublist3r y el nuevo Subfinder)
+            sub_options=(
+                "1.  [WHOIS] Registro y Contactos del Dominio     | whois $dominio_limpio"
+                "2.  [DNSRecon] Enumeración DNS estándar          | dnsrecon -d $dominio_limpio"
+                "3.  [WAFW00F] Detección de Firewall Web (WAF)    | wafw00f $url_osint"
+                "4.  [Sublist3r] Búsqueda OSINT de Subdominios    | sublist3r -d $dominio_limpio"
+                "5.  [Subfinder] Descubrimiento Pasivo de Hosts   | subfinder -d $dominio_limpio"
+                "6.  [OSINT] Búsqueda de Hosts (HackerTarget)     | curl -s https://api.hackertarget.com/hostsearch/?q=$dominio_limpio"
+                "x.  << Volver al menú principal                  | back"
+            )
+            prompt_text="🕵️ OSINT (Modo Dominio): "
+        fi
+        
+        sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="$prompt_text" --height=25% --layout=reverse --border)
+        
+        [[ "$sub_selection" == *"Volver"* || -z "$sub_selection" ]] && continue
+
+        # Extraemos el comando a ejecutar (lo que está a la derecha del '|')
+        cmd_raw=$(echo "$sub_selection" | awk -F "|" '{print $2}' | xargs)
+
+        if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando herramienta de footprinting...${RESET}"; fi
+        
+        echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
+        echo -e "🕒 INICIO FOOTPRINTING: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+        echo -e "🚀 COMANDO: $cmd_raw" | output_txt
+        echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
+
+        # Usamos eval para ejecutar el comando crudo
+        eval "$cmd_raw" 2>&1 | output_txt
+
+        [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}📄 Reporte guardado en: $reporte_txt${RESET}"
+        echo -e "\n${AZUL}--------------------------------------------------${RESET}"
+        echo -e "${VERDE}✅ Reconocimiento finalizado.${RESET}"
         
         echo
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
