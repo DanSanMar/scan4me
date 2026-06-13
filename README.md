@@ -1,5 +1,4 @@
-Markdown
-# 🔍 Scan4Me v5.5 - ALL4ME
+# 🔍 Scan4Me v5.8 - ALL4ME
 
 Scan4Me es una herramienta de auditoría y reconocimiento de red interactiva avanzada escrita en Bash. Diseñada para *pentesters* y administradores de sistemas, centraliza múltiples herramientas de seguridad en una interfaz de menú intuitiva potenciada por `fzf`, incluyendo un sistema inteligente de instalación y detección automática de dependencias.
 
@@ -7,15 +6,16 @@ Scan4Me es una herramienta de auditoría y reconocimiento de red interactiva ava
 
 ---
 
-## ✨ Características Principales (+Novedades de la v5.5)
+## ✨ Características Principales (+Novedades de la v5.8)
 
 * 🎨 **Interfaz Renovada:** Salida visual optimizada de alta compatibilidad en 256 colores (`xterm-256color`) y logo dinámico en tiempo real.
 * 🗺️ **Soporte Multi-Distro:** Detección inteligente del gestor de paquetes nativo del sistema (`apt`, `dnf`, `pacman` o `zypper`).
 * 🤖 **Instalador de Dependencias Integrado:** Si falta alguna herramienta core, el script ofrece automatizar su instalación o despliega una guía detallada personalizada para tu distribución.
 * 🎯 **Modo Autodetección de Red Local:** Al ejecutarse sin parámetros, activa una fase de descubrimiento de hosts activos mediante `arp-scan` y escaneo de sondeo `nmap -sn`, permitiendo seleccionar el objetivo interactivamente con `fzf`.
+* 🕵️‍♂️ **Módulo Inteligente de OSINT (Nuevo v5.8):** Submenú especializado en reconocimiento pasivo (*footprinting*) que adapta dinámicamente sus herramientas y consultas según si el objetivo es una dirección IP o un nombre de dominio.
 * 📚 **Gestión Eficiente de SecLists:** Clonación automática opcional vía GIT en el directorio `HOME` del usuario real en caso de no encontrarse en las rutas estándar.
-* 📝 **Control de Logs Flexible:** Permite activar o desactivar en caliente el guardado de reportes en texto plano (`.txt`) o XML desde el menú principal.
-* 🪟 **Módulo "Scan4Windows" (Nuevo v5.5):** Submenú especializado para entornos Windows que incorpora auditorías SMB, NetBIOS y ejecuciones automáticas con herramientas externas dedicadas.
+* 📝 **Control de Logs Flexible:** Permitir activar o desactivar en caliente el guardado de reportes en texto plano (`.txt`) o XML desde el menú principal.
+* 🪟 **Módulo "Scan4Windows" (Nuevo v5.7):** Submenú especializado para entornos Windows que incorpora auditorías SMB, NetBIOS y ejecuciones automáticas con herramientas externas dedicadas.
 * 📊 **Kit de Writeup Automático:** Al finalizar un escaneo automático con el modo XML activo, se procesan los resultados para generar de manera automática un archivo HTML (vía `xsltproc`) y un reporte en Markdown estructurado (`.md`) ideal para documentación rápida de auditorías.
 
 ---
@@ -24,6 +24,7 @@ Scan4Me es una herramienta de auditoría y reconocimiento de red interactiva ava
 
 * **WPScan:** Instalado y gestionado de manera nativa a través de **Ruby Gems (gem)** para garantizar una mayor estabilidad frente a otras versiones empaquetadas.
 * **Feroxbuster:** Gestión de instalación y rutas optimizada mediante **Snap** o compilación manual.
+* **OSINT Multi-Motor:** Integración combinada de múltiples herramientas pasivas externas para maximizar la recolección de subdominios y eludir las restricciones de bloqueo por scraping IP.
 * **Herramientas Windows:** Integración nativa de `smbclient`, `nbtscan` y `enum4linux` para enumeraciones avanzadas del protocolo SMB y NetBIOS.
 
 ---
@@ -32,7 +33,7 @@ Scan4Me es una herramienta de auditoría y reconocimiento de red interactiva ava
 
 El script mapea e instala automáticamente las dependencias según tu sistema operativo. El conjunto completo incluye:
 
-`fzf`, `nmap`, `whatweb`, `feroxbuster`, `wpscan`, `xsltproc`, `host`, `arp-scan`, `smbclient`, `nbtscan`, y `enum4linux`.
+`fzf`, `nmap`, `whatweb`, `feroxbuster`, `wpscan`, `xsltproc`, `host`, `arp-scan`, `smbclient`, `nbtscan`, `enum4linux`, `whois`, `dnsrecon`, `wafw00f`, `sublist3r`, `subfinder` y `curl`.
 
 ### El Diccionario SecLists
 El script requiere la wordlist `common.txt` de SecLists para las funciones de fuzzing web. Buscará automáticamente en el entorno de tu usuario no-root y en rutas del sistema:
@@ -48,13 +49,10 @@ El script requiere la wordlist `common.txt` de SecLists para las funciones de fu
 
 ### Clonar el repositorio y preparar el entorno
 
-Bash
-
-```
-git clone https://github.com/DanSanMar/scan4me.git
+```bash
+git clone [https://github.com/DanSanMar/scan4me.git](https://github.com/DanSanMar/scan4me.git)
 cd scan4me
 chmod +x scan4me.sh
-```
 
 ### Ejecución
 
