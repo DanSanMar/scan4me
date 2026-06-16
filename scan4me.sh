@@ -356,7 +356,7 @@ function mostrar_logo() {
     echo "     ██║  ██║███████╗███████╗      ██║██║ ╚═╝ ██║███████╗"
     echo "     ╚═╝  ╚═╝╚══════╝╚══════╝      ╚═╝╚═╝     ╚═╝╚══════╝"
     echo ""
-    echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░ --[ V 5.8 ]--"
+    echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░ --[ V 5.9 ]--"
     echo -e "${AZUL}--[ Escaneo Interactivo de Red con multiherramientas ]--${RESET}"
     echo -e "${BLANCO}--===============================================================${RESET}"
     echo -e "${BLANCO}--[ Auto-install + Auto-scan + Red Recon + Gobuster + Nmap +  ]--${RESET}"
@@ -590,7 +590,7 @@ while true; do
     options=(
         "x   [CAMBIAR MODO GUARDADO TXT]        | Estado actual: $txt_status"
         "x   [CAMBIAR MODO CONFIG XML]          | Estado actual: $xml_status"
-        "1.  Escaneo Automático Nmap (CTF)      | (-p- -sSCV + Vuln)"
+        "1.  Auto-Scan Nmap + Gobuster (CTF)    | (-p- -sSCV + Vuln + Fuzzing)"
         "2.  Otras opciones con Nmap (Submenú)  | nmap"
         "3.  Whatweb (Reconocimiento web)       | whatweb"
         "4.  Gobuster (Fuzzing Subdominios)     | subdomains"
@@ -726,7 +726,7 @@ while true; do
             rm -f "${archivo_fase2}.xml" "${archivo_fase2}.nmap" "${archivo_fase2}.gnmap"
             rm -f "${archivo_fase3}.xml" "${archivo_fase3}.nmap" "${archivo_fase3}.gnmap"
             rm -f "${archivo_fase4}.txt"
-            
+
             echo -e "\n${AZUL}--------------------------------------------------${RESET}"
             echo -e "\n${VERDE}✅ Reportes limpios y estructurados listos en: $folder${RESET}"
             echo -e "\n${AZUL}--------------------------------------------------${RESET}"
