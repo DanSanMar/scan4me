@@ -227,6 +227,33 @@ function procesar_reportes() {
     # 1. Generar HTML si xsltproc existe
     if command -v xsltproc &> /dev/null; then
         xsltproc "$xml_versiones" -o "$archivo_html" 2>/dev/null
+       
+        if [ -f "$txt_fuzzing" ] && [ -s "$txt_fuzzing" ] && [ -f "$archivo_html" ]; then
+            # 1. Creamos un archivo temporal eliminando las etiquetas de cierre estructurales del final del HTML de Nmap
+            local tmp_html="${archivo_html}.tmp"
+            grep -vE "</body>|</html>" "$archivo_html" > "$tmp_html"
+            
+            # 2. Concatenamos directamente nuestro bloque de Gobuster de forma segura usando redirección pura
+            {
+                echo ""
+                echo "<div id=\"web-fuzzing\" style=\"margin: 30px 0; padding: 20px; background: #fff; border: 1px solid #ddd; border-radius: 4px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;\">"
+                echo "  <h2 style=\"color: #005580; border-bottom: 2px solid #005580; padding-bottom: 5px; margin-top: 0;\">🌐 Fuzzing de Directorios Web (Gobuster)</h2>"
+                echo "  <pre style=\"background: #f4f4f4; padding: 15px; border-left: 5px solid #005580; overflow-x: auto; font-family: monospace; font-size: 13px; line-height: 1.5; color: #333;\">"
+                
+                # Volcamos las rutas encontradas limpiando las líneas de cabecera de Gobuster
+                grep -vE "^=========================|^Starting gobuster|^Finished" "$txt_fuzzing" | grep -v "^$"
+                
+                echo "  </pre>"
+                echo "</div>"
+                
+                # 3. Volvemos a cerrar el cuerpo y el documento HTML correctamente
+                echo "</body>"
+                echo "</html>"
+            } >> "$tmp_html"
+            
+            # Reemplazamos el archivo original por el reporte unificado
+            mv "$tmp_html" "$archivo_html"
+        fi
         echo -e "${VERDE}✅ Kit de Writeup HTML generado en: ${BLANCO}$(basename "$archivo_html")${RESET}"
     fi
 
@@ -713,12 +740,12 @@ while true; do
             # Invocamos tu procesador automático de Writeups
             procesar_reportes
 
-            echo -e "\n${AZUL}--------------------------------------------------${RESET}"
-            echo -e "\n${VERDE}✅ Reportes completos XML, HTML y Markdown procesados en: $folder${RESET}"
-            echo -e "\n${AZUL}--------------------------------------------------${RESET}"
-            echo -e "${AMARILLO}🧹 Para salir y conservar los archivos raw pulsa: Control+C ${RESET}"
-            echo -e "\n${AZUL}--------------------------------------------------${RESET}"
-            read -n 1 -s -r -p $'\e[1;5;32mPulsa Enter para guardar solo los reportes finales...\e[0m'
+            echo -e "${AZUL}--------------------------------------------------${RESET}"
+            echo -e "${VERDE}✅ Reportes completos XML, HTML y Markdown procesados en: $folder${RESET}"
+            echo -e "${AZUL}--------------------------------------------------${RESET}"
+            echo -e "${AMARILLO}⚠️ Para salir y conservar los archivos raw pulsa: Control+C ${RESET}"
+            read -n 1 -s -r -p $'\e[1;32m🚀 Para guardar solo los reportes finales pulsa: Enter\e[0m'
+            
 
             # === LIMPIEZA DE ARCHIVOS TEMPORALES ===
             # Borramos los archivos temporales de Nmap (.xml, .nmap, .gnmap)
