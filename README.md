@@ -1,4 +1,4 @@
-# 🔍 Scan4Me v5.8 - ALL4ME
+# 🔍 Scan4Me v5.9 - ALL4ME
 
 Scan4Me es una herramienta de auditoría y reconocimiento de red interactiva avanzada escrita en Bash. Diseñada para *pentesters* y administradores de sistemas, centraliza múltiples herramientas de seguridad en una interfaz de menú intuitiva potenciada por `fzf`, incluyendo un sistema inteligente de instalación y detección automática de dependencias.
 
@@ -6,7 +6,7 @@ Scan4Me es una herramienta de auditoría y reconocimiento de red interactiva ava
 
 ---
 
-## ✨ Características Principales (+Novedades de la v5.8)
+## ✨ Características Principales (+Novedades de la v5.9)
 
 * 🎨 **Interfaz Renovada:** Salida visual optimizada de alta compatibilidad en 256 colores (`xterm-256color`) y logo dinámico en tiempo real.
 * 🗺️ **Soporte Multi-Distro:** Detección inteligente del gestor de paquetes nativo del sistema (`apt`, `dnf`, `pacman` o `zypper`).
@@ -17,6 +17,7 @@ Scan4Me es una herramienta de auditoría y reconocimiento de red interactiva ava
 * 📝 **Control de Logs Flexible:** Permitir activar o desactivar en caliente el guardado de reportes en texto plano (`.txt`) o XML desde el menú principal.
 * 🪟 **Módulo "Scan4Windows" (Nuevo v5.7):** Submenú especializado para entornos Windows que incorpora auditorías SMB, NetBIOS y ejecuciones automáticas con herramientas externas dedicadas.
 * 📊 **Kit de Writeup Automático:** Al finalizar un escaneo automático con el modo XML activo, se procesan los resultados para generar de manera automática un archivo HTML (vía `xsltproc`) y un reporte en Markdown estructurado (`.md`) ideal para documentación rápida de auditorías.
+* 🤖 **Fuzzing Web en "Auto-scan" (Nuevo v5.9):** Añadimos al modulo inicial con Nmap un Fuzzing básico con Gobuster en caso de encontrar puertos Web abiertos y se implementa en la generación de Writeups.
 
 ---
 

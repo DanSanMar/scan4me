@@ -716,13 +716,12 @@ while true; do
             echo -e "\n${AZUL}--------------------------------------------------${RESET}"
             echo -e "\n${VERDE}✅ Reportes completos XML, HTML y Markdown procesados en: $folder${RESET}"
             echo -e "\n${AZUL}--------------------------------------------------${RESET}"
-            echo -e "${AMARILLO}🧹 Si quieres coservar todos los archivos raw pulsa Control+C para salir directamente${RESET}"
+            echo -e "${AMARILLO}🧹 Para salir y conservar los archivos raw pulsa: Control+C ${RESET}"
             echo -e "\n${AZUL}--------------------------------------------------${RESET}"
-            read -n 1 -s -r -p $'\e[1;5;32mEn caso contrario, pulsa cualquier tecla realizar una limpieza y dejar solo los reportes finales...\e[0m'
+            read -n 1 -s -r -p $'\e[1;5;32mPulsa Enter para guardar solo los reportes finales...\e[0m'
 
-            # === 🧹 LIMPIEZA DE RUIDO INNECESARIO ===
+            # === LIMPIEZA DE ARCHIVOS TEMPORALES ===
             # Borramos los archivos temporales de Nmap (.xml, .nmap, .gnmap)
-            # de las fases de esta sesión para dejar la carpeta impecable.
             rm -f "${archivo_fase2}.xml" "${archivo_fase2}.nmap" "${archivo_fase2}.gnmap"
             rm -f "${archivo_fase3}.xml" "${archivo_fase3}.nmap" "${archivo_fase3}.gnmap"
             rm -f "${archivo_fase4}.txt"
