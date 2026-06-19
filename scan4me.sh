@@ -578,9 +578,9 @@ if ! host "$target" &>/dev/null && ! ping -c 1 -W 1 -q "$target" &>/dev/null; th
 fi
 #Creación de carpeta y reporte .txt (Sanitizando rutas para evitar errores con barra /)
 target_safe=$(echo "$target" | tr '/' '_')
-folder="Auditoria_${target_safe}_$(date +%d-%m-%Y)"
+folder="A_${target_safe}_$(date +%d-%m-%Y)"
 mkdir -p "$folder"
-reporte_txt="$folder/Auditoria_Completa_${target_safe}.txt"
+reporte_txt="$folder/A_${target_safe}.txt"
 
 if [ -n "$wordlist" ]; then
     echo -e "\n${VERDE}🔍 Comprobación SecLists instalado:      --- OK ✅${RESET}"
@@ -889,42 +889,65 @@ while true; do
             url="http://$url"
         fi
 
-        # Generamos nombres de archivos individuales y limpios
-        local timestamp=$(date +%H%M%S)
-        local ferox_txt="$folder/feroxbuster_${target}_${timestamp}.txt"
-        local ferox_json="$folder/feroxbuster_${target}_${timestamp}.json"
+        # Sanitizar el target para evitar problemas de carpetas si contiene barras /
+        target_safe=$(echo "$target" | tr '/' '_')
+        ferox_timestamp=$(date +%H%M%S)
+        ferox_txt="$folder/feroxbuster_${target_safe}_${ferox_timestamp}.txt"
+        ferox_json="$folder/feroxbuster_${target_safe}_${ferox_timestamp}.json"
 
-        if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando feroxbuster...${RESET}"; fi
+        if [[ "$txt_status" == "OFF" ]]; then 
+        echo -e "${AMARILLO}⏳ Ejecutando feroxbuster...${RESET}"; 
+        fi
+        
+        # Guardamos el encabezado inicial en el reporte unificado
         echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
         echo -e "🕒 INICIO feroxbuster: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
         
         # Argumentos base comunes
-        local cmd_args=("--url" "$url" "--wordlist" "$wordlist" "--extensions" "bak,zip,txt,sql,old,php.bak" "--no-recursion" "--filter-size" "0" "--threads" "50" "--timeout" "5")
+        cmd_args=("--url" "$url" "--wordlist" "$wordlist" "--extensions" "bak,zip,txt,sql,old,php.bak" "--no-recursion" "--filter-size" "0" "--threads" "50" "--timeout" "5")
 
-        # Control inteligente de formatos según configuración del menú
         if [[ "$xml_status" == "ON" ]]; then
             echo -e "🚀 COMANDO: feroxbuster ${cmd_args[*]} --json --output $ferox_json" | output_txt
             echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
             
-            # Ejecución limpia en formato JSON (Alternativa a XML)
+            # Ejecución nativa en formato JSON (Guarda el archivo completo)
             $FEROX_BIN "${cmd_args[@]}" --json --output "$ferox_json"
+            
+            # SI EL TXT ESTÁ ACTIVADO: Extraemos los hallazgos del JSON y los guardamos limpios en el TXT unificado
+            if [[ "$txt_status" == "ON" ]] && [ -f "$ferox_json" ]; then
+                {
+                    echo ""
+                    echo "🌐 [Resultados extraídos del reporte estructurado JSON]:"
+                    grep '"status"' "$ferox_json" | while read -r line; do
+                        status=$(echo "$line" | grep -o '"status":[0-9]*' | cut -d':' -f2)
+                        v_url=$(echo "$line" | grep -o '"url":"[^"]*"' | cut -d'"' -f4)
+                        if [ -n "$v_url" ]; then
+                            echo "   [+] $status - $v_url"
+                        fi
+                    done
+                    echo ""
+                } >> "$reporte_txt"
+            fi
             echo -e "\n${VERDE}🌐 Reporte estructurado JSON guardado en: $ferox_json${RESET}"
         else
+            # MODO ESTÁNDAR (XML OFF)
             if [[ "$txt_status" == "ON" ]]; then
                 echo -e "🚀 COMANDO: feroxbuster ${cmd_args[*]} --output $ferox_txt" | output_txt
                 echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
                 
-                # Guarda el txt de forma nativa (sin basura de barras de progreso)
+                # Guarda el txt individual de forma nativa limpia (sin basura de barras de progreso)
                 $FEROX_BIN "${cmd_args[@]}" --output "$ferox_txt"
                 
-                # Volcamos de forma segura el resultado limpio al log global
-                cat "$ferox_txt" >> "$reporte_txt"
+                # Volcamos de forma segura el archivo de texto limpio al log unificado
+                if [ -f "$ferox_txt" ]; then
+                    cat "$ferox_txt" >> "$reporte_txt"
+                fi
                 echo -e "\n${VERDE}✅ Resultados individuales limpios en: $ferox_txt${RESET}"
             else
                 echo -e "🚀 COMANDO: feroxbuster ${cmd_args[*]}" | output_txt
                 echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
                 
-                # Ejecución normal directa por pantalla
+                # Ejecución clásica directa por pantalla sin guardar nada
                 $FEROX_BIN "${cmd_args[@]}"
             fi
         fi
