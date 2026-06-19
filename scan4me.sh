@@ -576,10 +576,11 @@ if ! host "$target" &>/dev/null && ! ping -c 1 -W 1 -q "$target" &>/dev/null; th
     read -r confirm
     [[ "$confirm" != "s" ]] && exit 1
 fi
-#Creación de carpeta y reporte .txt
-folder="Auditoria_${target}_$(date +%d-%m-%Y)"
+#Creación de carpeta y reporte .txt (Sanitizando rutas para evitar errores con barra /)
+target_safe=$(echo "$target" | tr '/' '_')
+folder="Auditoria_${target_safe}_$(date +%d-%m-%Y)"
 mkdir -p "$folder"
-reporte_txt="$folder/Auditoria_Completa_${target}.txt"
+reporte_txt="$folder/Auditoria_Completa_${target_safe}.txt"
 
 if [ -n "$wordlist" ]; then
     echo -e "\n${VERDE}🔍 Comprobación SecLists instalado:      --- OK ✅${RESET}"
@@ -728,11 +729,11 @@ while true; do
                 echo -e "${AZUL}🚀 Fase 4: Fuzzing web detectado (puertos web abiertos)...${RESET}"
                 echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
                 echo -e "🕒 INICIO AUTO-SCAN GOBUSTER: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
-                echo -e "🚀 COMANDO: gobuster dir -u http://$target/ -w /usr/share/wordlists/dirb/common.txt -o ${archivo_fase4}.txt" | output_txt
+                echo -e "🚀 COMANDO: gobuster dir -u http://$target/ -w "$wordlist" ${RESET}" | output_txt
                 echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
 
                 # Ejecución real de Gobuster
-                gobuster dir -u "http://$target/" -w /usr/share/wordlists/dirb/common.txt -o "${archivo_fase4}.txt" | output_txt
+                gobuster dir -u "http://$target/" -w "$wordlist" -o "${archivo_fase4}.txt" | output_txt
             else
                 echo -e "\n${AMARILLO}⚠️ Saltando Fase 4 (Fuzzing web): No se detectaron puertos HTTP/HTTPS estándar (80, 443, 8080).${RESET}"
             fi
@@ -879,46 +880,57 @@ while true; do
 
     if [[ "$selection" == *"Feroxbuster"* ]]; then
         if [ -z "$wordlist" ]; then
-        echo -e "${ROJO}❌ Error: No puedes usar Feroxbuster sin el diccionario SecLists.${RESET}"
-        read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
-        continue
+            echo -e "${ROJO}❌ Error: No puedes usar Feroxbuster sin el diccionario SecLists.${RESET}"
+            read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
+            continue
         fi
         url="$target"
         if [[ ! "$url" =~ ^https?:// ]]; then
             url="http://$url"
         fi
+
+        # Generamos nombres de archivos individuales y limpios
+        local timestamp=$(date +%H%M%S)
+        local ferox_txt="$folder/feroxbuster_${target}_${timestamp}.txt"
+        local ferox_json="$folder/feroxbuster_${target}_${timestamp}.json"
 
         if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando feroxbuster...${RESET}"; fi
         echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
         echo -e "🕒 INICIO feroxbuster: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
-        echo -e "🚀 COMANDO: feroxbuster --url $url --wordlist $wordlist --extensions bak,zip,txt,sql,old,php.bak --no-recursion --filter-size 0 --threads 50 --timeout 5" | output_txt
-        echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
-       
-        $FEROX_BIN --url $url --wordlist "$wordlist" --extensions bak,zip,txt,sql,old,php.bak --no-recursion --filter-size 0 --threads 50 --timeout 5 | output_txt
         
-        [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}✅ Resultados en: $reporte_txt${RESET}"
-        echo ""
-        read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
-        continue
-    fi
+        # Argumentos base comunes
+        local cmd_args=("--url" "$url" "--wordlist" "$wordlist" "--extensions" "bak,zip,txt,sql,old,php.bak" "--no-recursion" "--filter-size" "0" "--threads" "50" "--timeout" "5")
 
-    if [[ "$selection" == *"Wpscan"* ]]; then
-        url="$target"
-        if [[ ! "$url" =~ ^https?:// ]]; then
-            url="http://$url"
+        # Control inteligente de formatos según configuración del menú
+        if [[ "$xml_status" == "ON" ]]; then
+            echo -e "🚀 COMANDO: feroxbuster ${cmd_args[*]} --json --output $ferox_json" | output_txt
+            echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
+            
+            # Ejecución limpia en formato JSON (Alternativa a XML)
+            $FEROX_BIN "${cmd_args[@]}" --json --output "$ferox_json"
+            echo -e "\n${VERDE}🌐 Reporte estructurado JSON guardado en: $ferox_json${RESET}"
+        else
+            if [[ "$txt_status" == "ON" ]]; then
+                echo -e "🚀 COMANDO: feroxbuster ${cmd_args[*]} --output $ferox_txt" | output_txt
+                echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
+                
+                # Guarda el txt de forma nativa (sin basura de barras de progreso)
+                $FEROX_BIN "${cmd_args[@]}" --output "$ferox_txt"
+                
+                # Volcamos de forma segura el resultado limpio al log global
+                cat "$ferox_txt" >> "$reporte_txt"
+                echo -e "\n${VERDE}✅ Resultados individuales limpios en: $ferox_txt${RESET}"
+            else
+                echo -e "🚀 COMANDO: feroxbuster ${cmd_args[*]}" | output_txt
+                echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
+                
+                # Ejecución normal directa por pantalla
+                $FEROX_BIN "${cmd_args[@]}"
+            fi
         fi
         
-        if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando wpscan...${RESET}"; fi
-        echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
-        echo -e "🕒 INICIO wpscan: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
-        echo -e "🚀 COMANDO: wpscan --url $url$subdominio -e u,ap --detection-mode aggressive --force" | output_txt
-        echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
-        echo -e "${ROJO}---------------  *ATENCIÓN* ---------------${RESET}\nSi el wordpress está alojado en un subdominio, se debe salir y volver a ejecutar el script introduciendo la ip con un espacio /subdominio.\n\n${MAGENTA}------> Ejemplo: 172.17.0.2 /wordpress${RESET}"
-
-        $WPSCAN_BIN --url $url$subdominio -e u,ap --detection-mode aggressive --force | output_txt
-        
-        [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}✅ Resultados en: $reporte_txt${RESET}"
-        echo ""   
+        [[ "$txt_status" == "ON" ]] && echo -e "${VERDE}📄 Log unificado actualizado en: $reporte_txt${RESET}"
+        echo ""
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
         continue
     fi
