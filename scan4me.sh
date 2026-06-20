@@ -208,10 +208,9 @@ function procesar_reportes() {
     local backup_folder="Auditoria_${target}_$(date +%d-%m-%Y)"
     local current_folder="${folder:-$backup_folder}"
     
+    # Capturamos los archivos más recientes generados por la automatización
     local xml_versiones=$(ls -t "$current_folder"/nmap_auto_${target}_*_fase2.xml 2>/dev/null | head -n 1)
     local xml_vulns=$(ls -t "$current_folder"/nmap_auto_${target}_*_fase3.xml 2>/dev/null | head -n 1)
-    
-    # [NUEVO] Capturamos el archivo de fuzzing web de la fase 4
     local txt_fuzzing=$(ls -t "$current_folder"/gobuster_auto_${target}_*_fase4.txt 2>/dev/null | head -n 1)
     
     if [ -z "$xml_versiones" ]; then
@@ -224,71 +223,67 @@ function procesar_reportes() {
     local archivo_md="$current_folder/Writeup_${target}_${timestamp}.md"
     local archivo_ia="$current_folder/ia_prompt_${target}.txt"
 
-    # 1. Generar HTML si xsltproc existe
+    # [CORRECCIÓN] Declaración explícita de variables locales para evitar fugas de scope
+    local total_puertos=0
+    local alerta_vulns=""
+    local status_web=""
+    local nmap_file="${xml_versiones%.xml}.nmap"
+    local vuln_file="${xml_vulns%.xml}.nmap"
+
+    # 1. Generar HTML unificado si xsltproc existe
     if command -v xsltproc &> /dev/null; then
         xsltproc "$xml_versiones" -o "$archivo_html" 2>/dev/null
-       
+        
+        # Inyectar el bloque de Gobuster en el HTML si hay resultados
         if [ -f "$txt_fuzzing" ] && [ -s "$txt_fuzzing" ] && [ -f "$archivo_html" ]; then
-            # 1. Creamos un archivo temporal eliminando las etiquetas de cierre estructurales del final del HTML de Nmap
             local tmp_html="${archivo_html}.tmp"
             grep -vE "</body>|</html>" "$archivo_html" > "$tmp_html"
             
-            # 2. Concatenamos directamente nuestro bloque de Gobuster de forma segura usando redirección pura
             {
                 echo ""
                 echo "<div id=\"web-fuzzing\" style=\"margin: 30px 0; padding: 20px; background: #fff; border: 1px solid #ddd; border-radius: 4px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;\">"
                 echo "  <h2 style=\"color: #005580; border-bottom: 2px solid #005580; padding-bottom: 5px; margin-top: 0;\">🌐 Fuzzing de Directorios Web (Gobuster)</h2>"
                 echo "  <pre style=\"background: #f4f4f4; padding: 15px; border-left: 5px solid #005580; overflow-x: auto; font-family: monospace; font-size: 13px; line-height: 1.5; color: #333;\">"
-                
-                # Volcamos las rutas encontradas limpiando las líneas de cabecera de Gobuster
                 grep -vE "^=========================|^Starting gobuster|^Finished" "$txt_fuzzing" | grep -v "^$"
-                
                 echo "  </pre>"
                 echo "</div>"
-                
-                # 3. Volvemos a cerrar el cuerpo y el documento HTML correctamente
                 echo "</body>"
                 echo "</html>"
             } >> "$tmp_html"
             
-            # Reemplazamos el archivo original por el reporte unificado
             mv "$tmp_html" "$archivo_html"
         fi
         echo -e "${VERDE}✅ Kit de Writeup HTML generado en: ${BLANCO}$(basename "$archivo_html")${RESET}"
     fi
 
-    local nmap_file="${xml_versiones%.xml}.nmap"
-    local vuln_file="${xml_vulns%.xml}.nmap"
-
-    # 2. Generar Markdown estructurado (Tu reporte de cara al CTF)
+    # 2. Generar Markdown estructurado
     {
         echo "# 🎯 CTF Writeup / Auto-Report: $target"
         echo "📅 **Fecha de Auditoría:** $(date '+%d-%m-%Y %H:%M:%S')"
         echo "💻 **Objetivo (Target IP):** \`$target\`"
         echo ""
-               # --- [CÁLCULOS PARA EL RESUMEN EJECUTIVO] ---
-        # Contar puertos abiertos de forma segura
+
+        # --- [CÁLCULOS DINÁMICOS PARA EL RESUMEN EJECUTIVO] ---
         if [ -f "$nmap_file" ]; then
             total_puertos=$(grep -E "^[0-9]+/" "$nmap_file" | grep -v "SERVICE" | wc -l)
-        else
-            total_puertos=0
+        elif [ -f "$xml_versiones" ]; then
+            # [MEJORA] Plan B: Extraer del XML si el archivo .nmap ya fue borrado por la limpieza
+            total_puertos=$(grep -c "portid=" "$xml_versiones")
         fi
 
-        # Buscar indicios de vulnerabilidades críticas (VULNERABLE, CVE, Exploit)
         if [ -f "$vuln_file" ] && grep -qiE "vulnerable|cve-|exploit" "$vuln_file"; then
             alerta_vulns="⚠️ **SÍ** (Revisa la sección 4 inmediatamente)"
         else
             alerta_vulns="✅ No se detectaron patrones obvios a primera vista"
         fi
 
-        # Contar directorios web descubiertos
         if [ -f "$txt_fuzzing" ] && [ -s "$txt_fuzzing" ]; then
             total_web=$(grep -vE "^====|^Start|^Finish|^$" "$txt_fuzzing" | wc -l)
             status_web="$total_web directorios/archivos encontrados"
         else
-            status_web="No ejecutado o sin resultados"
+            status_web="No ejecutado o sin resultados web relevantes"
         fi
-        # --------------------------------------------
+        # ------------------------------------------------------
 
         echo "## 📝 1. Resumen Ejecutivo"
         echo "Este es un escaneo automatizado de reconocimiento rápido para el entorno CTF."
@@ -306,6 +301,7 @@ function procesar_reportes() {
             echo "2. Examina los códigos \`200\` y \`301/302\` del Fuzzing Web en la sección 5."
         fi
         echo ""
+        
         echo "## 🚪 2. Puertos y Servicios Detectados"
         echo "| Puerto | Estado | Servicio | Versión |"
         echo "| :---: | :---: | :--- | :--- |"
@@ -320,13 +316,17 @@ function procesar_reportes() {
                 echo "| **$p_id** | \`$p_stat\` | $p_serv | ${p_ver:-n/a} |"
             done
         else
-            echo "| - | No se pudo procesar la tabla de puertos directos. | - | - |"
+            echo "| - | No se pudo procesar la tabla de puertos (El log RAW .nmap no está disponible). | - | - |"
         fi
 
         echo ""
         echo "## 🔍 3. Análisis de Versiones Detallado"
         echo "\`\`\`text"
-        [ -f "$nmap_file" ] && sed -n '/PORT/,/Nmap done/p' "$nmap_file" | grep -vE "Service detection performed|Nmap done" | sed 's/^[ \t]*//'
+        if [ -f "$nmap_file" ]; then
+            sed -n '/PORT/,/Nmap done/p' "$nmap_file" | grep -vE "Service detection performed|Nmap done" | sed 's/^[ \t]*//'
+        else
+            echo "Información detallada no disponible debido a la limpieza de archivos RAW."
+        fi
         echo "\`\`\`"
 
         if [ -f "$vuln_file" ]; then
@@ -337,7 +337,6 @@ function procesar_reportes() {
             echo "\`\`\`"
         fi
 
-        # [NUEVO] Inyectar Fuzzing Web en el Markdown si el archivo existe y no está vacío
         if [ -f "$txt_fuzzing" ] && [ -s "$txt_fuzzing" ]; then
             echo ""
             echo "## 🌐 5. Fuzzing de Directorios Web (Gobuster)"
@@ -349,13 +348,12 @@ function procesar_reportes() {
 
     echo -e "${VERDE}✅ Reporte Markdown estructurado listo en: ${BLANCO}$(basename "$archivo_md")${RESET}"
 
-    # =========================================================================
-    # 3. NUEVO: ARCHIVO DE TEXTO ULTRA-OPTIMIZADO PARA IA 
-    # =========================================================================
-    # Extraemos la lista limpia de puertos directamente desde el archivo final
+    # 3. Archivo de texto ultra-optimizado para IA (Prompt Completo)
     local ports_list=""
-    if [ -f "$nmap_file" ]; then
-        ports_list=$(grep -E "^[0-9]+/" "$nmap_file" | cut -d/ -f1 | xargs | tr ' ' ',')
+    if [ -f "$xml_versiones" ]; then
+        # [CORRECCIÓN] Extraemos los puertos de forma segura desde el XML usando awk/grep nativo 
+        # para garantizar que el prompt funcione incluso después de la purga de archivos RAW .nmap
+        ports_list=$(grep "portid=" "$xml_versiones" | awk -F'portid="' '{print $2}' | cut -d'"' -f1 | xargs | tr ' ' ',')
     fi
 
     {
@@ -365,13 +363,8 @@ function procesar_reportes() {
         echo "Por favor, estructura tu respuesta detallando los siguientes puntos:"
         echo "1. **Análisis de Superficie de Ataque:** Identifica servicios detectados, versiones obsoletas y posibles malas configuraciones."
         echo "2. **Investigación Teórica (CVE):** Indica si existen vulnerabilidades conocidas asociadas a esas versiones y explica brevemente en qué consiste el fallo de seguridad."
-        
-        # [MODIFICADO LEVEMENTE] Añadida la referencia al entorno web para la IA
         echo "3. **Vectores de Entrada Sugeridos:** Explica conceptualmente cómo se podría interactuar con el servicio para validar la vulnerabilidad. Presta especial atención a las rutas web descubiertas si las hay."
-        
-        # [RESTAURADO] Tu cadena exacta con las herramientas que había omitido
         echo "4. **Metodología de Explotación Educativa:** Describe la lógica o los pasos conceptuales detallados (y las herramientas estándar de la industria como curl, nmap, netcat, etc.) necesarios para comprobar el vector de ataque en un entorno controlado."
-        
         echo "5. **Remediación y Buenas Prácticas:** Explica brevemente cómo se corregiría este fallo en un entorno de producción real."
         echo "Mantén un tono académico, técnico y didáctico. Responde en español."
         echo "--- START TARGET DATA ---"
@@ -381,14 +374,16 @@ function procesar_reportes() {
         echo "[VERSIONS_AND_SERVICES]"
         if [ -f "$nmap_file" ]; then
             sed -n '/PORT/,/Nmap done/p' "$nmap_file" | grep -vE "Service detection performed|Nmap done|SF:" | sed 's/^[ \t]*//' | grep -v "^$"
+        else
+            echo "Revisa el archivo HTML unificado adjunto para ver el árbol completo de servicios e identificadores de versiones."
         fi
         echo ""
         echo "[VULNERABILITY_SCRIPTS]"
         if [ -f "$vuln_file" ]; then
             sed -n '/PORT/,/Nmap done/p' "$vuln_file" | grep -vE "Service detection performed|Nmap done" | sed 's/^[ \t]*//' | grep -v "^$"
+        else
+            echo "No se encontraron scripts NSE guardados en formato plano."
         fi
-        
-        # [NUEVO] Bloque de datos de Gobuster para la IA
         echo ""
         echo "[WEB_FUZZING_DIRECTORIES]"
         if [ -f "$txt_fuzzing" ] && [ -s "$txt_fuzzing" ]; then
@@ -396,7 +391,6 @@ function procesar_reportes() {
         else
             echo "No se detectó fuzzing web o no hubo resultados relevantes."
         fi
-        
         echo "--- END TARGET DATA ---"
     } > "$archivo_ia"
 
@@ -420,7 +414,7 @@ function mostrar_logo() {
     echo "     ██║  ██║███████╗███████╗      ██║██║ ╚═╝ ██║███████╗"
     echo "     ╚═╝  ╚═╝╚══════╝╚══════╝      ╚═╝╚═╝     ╚═╝╚══════╝"
     echo ""
-    echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░ --[ V 5.9 ]--"
+    echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░ --[ V 6 ]--"
     echo -e "${AZUL}--[ Escaneo Interactivo de Red con multiherramientas ]--${RESET}"
     echo -e "${BLANCO}--===============================================================${RESET}"
     echo -e "${BLANCO}--[ Auto-install + Auto-scan + Red Recon + Gobuster + Nmap +  ]--${RESET}"
@@ -688,150 +682,133 @@ while true; do
         continue
     fi
 
-    # --- OPCIÓN 1: ESCANEO AUTOMÁTICO ---
+    # --- OPCIÓN 1: ESCANEO AUTOMÁTICO OPTIMIZADO PARA CTF ---
     if [[ "$selection" == *"1."* ]] || [[ "$selection" == *"Automático"* ]]; then
-        echo -e "\n${AZUL}🚀 Iniciando Escaneo Automático (Fase 1: Descubrimiento de puertos)${RESET}"
+        echo -e "\n${AZUL}🚀 [Fase 1] Descubrimiento ultra-rápido de puertos abiertos...${RESET}"
         flags="-sS -p- -n -Pn --open --min-rate 5000"
 
         echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
-        echo -e "🕒 INICIO AUTO-SCAN: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+        echo -e "🕒 INICIO AUTO-SCAN FASE 1: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
         echo -e "🚀 COMANDO: nmap $flags $target" | output_txt
         echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
         
-        # Guardamos el descubrimiento y lo enviamos al log TXT si procede
-        nmap $flags "$target" | tee /tmp/scan4me_fase1.txt | output_txt
+        # Guardamos temporalmente para extraer los puertos abiertos
+        nmap $flags "$target" | tee /tmp/scan4me_fase1.txt
+        cat /tmp/scan4me_fase1.txt | output_txt
         open_ports=$(grep "/tcp" /tmp/scan4me_fase1.txt | cut -d/ -f1 | xargs | tr ' ' ',')
         rm -f /tmp/scan4me_fase1.txt
         
         if [ -z "$open_ports" ]; then
-            echo -e "\n${ROJO}❌ No se encontraron puertos abiertos con el escaneo rápido.${RESET}" | output_txt
-            echo -e "${CYAN}⚠️ Procediendo a un segundo análisis más sigiloso para evadir firewalls...${RESET}" | output_txt
+            echo -e "\n${ROJO}❌ No se encontraron puertos abiertos con tasas agresivas.${RESET}" | output_txt
+            echo -e "${CYAN}⚠️ Reintentando con evasión genérica y temporizado seguro...${RESET}" | output_txt
             
-            flags_sigilo="-sF --top-ports 1000 -Pn -n --open -T3 --data-length 25 --spoof-mac cisco"
+            flags_sigilo="-sF --top-ports 1000 -Pn -n --open -T3 --data-length 25"
             
             echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
             echo -e "🕒 INICIO ESCANEO SIGILOSO: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
             echo -e "🚀 COMANDO: nmap $flags_sigilo $target" | output_txt
             echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
             
-            nmap $flags_sigilo "$target" | tee /tmp/scan4me_sigilo.txt | output_txt
+            nmap $flags_sigilo "$target" | tee /tmp/scan4me_sigilo.txt
+            cat /tmp/scan4me_sigilo.txt | output_txt
             open_ports=$(grep "/tcp" /tmp/scan4me_sigilo.txt | cut -d/ -f1 | xargs | tr ' ' ',')
             rm -f /tmp/scan4me_sigilo.txt
             
             if [ -z "$open_ports" ]; then
-                echo -e "\n${ROJO}❌ Tampoco se detectaron puertos con el escaneo sigiloso. El host podría estar caído o protegido.${RESET}" | output_txt
+                echo -e "\n${ROJO}❌ No se detectaron servicios activos. El host podría estar blindado o caído.${RESET}" | output_txt
                 echo ""
                 read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
                 continue
-            else
-                echo -e "\n${VERDE}✅ ¡Éxito! Puertos detectados mediante sigilo: $open_ports${RESET}" | output_txt
             fi
-        else
-            echo -e "\n${VERDE}✅ Puertos detectados correctamente: $open_ports${RESET}" | output_txt
         fi
 
-        # --- FLUJO DE EXPLOTACIÓN (Fase 2 y 3) ---
-        echo
-        echo -e "${AZUL}🚀 Fase 2: Escaneo de scripts y versiones...${RESET}"
+        echo -e "\n${VERDE}✅ Puertos objetivos identificados: $open_ports${RESET}" | output_txt
 
+        # Definición estricta de marcas de tiempo y rutas sincronizadas con procesar_reportes()
         current_time=$(date +%H%M%S)
         archivo_fase2="$folder/nmap_auto_${target}_${current_time}_fase2"
         archivo_fase3="$folder/nmap_auto_${target}_${current_time}_fase3"
         archivo_fase4="$folder/gobuster_auto_${target}_${current_time}_fase4"
-        flags_fase2="-sSCV -Pn -n -v -p"
-        flags_fase3="--script vuln -v -p"
 
+        # --- FASE 2: VERSIONES Y SERVICIOS COMPLETOS ---
+        echo -e "\n${AZUL}🚀 [Fase 2] Analizando versiones exactas y banners en puertos activos...${RESET}"
+        echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
+        echo -e "🕒 INICIO DETECCIÓN VERSIONES: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+        
         if [[ "$xml_status" == "ON" ]]; then
-            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
-            echo -e "🕒 INICIO AUTO-SCAN XML (Versiones): $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
-            echo -e "🚀 COMANDO: nmap $flags_fase2 $open_ports $target -oA $archivo_fase2" | output_txt
-            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
-                
-            # Ejecución con salida XML/Nmap y canalizada también hacia tu log TXT global
-            nmap $flags_fase2 $open_ports "$target" -oA "$archivo_fase2" | output_txt
+            echo -e "🚀 COMANDO: nmap -sSCV -Pn -n -p $open_ports $target -oA $archivo_fase2" | output_txt
+            nmap -sSCV -Pn -n -p "$open_ports" "$target" -oA "$archivo_fase2"
+            [ -f "${archivo_fase2}.nmap" ] && cat "${archivo_fase2}.nmap" | output_txt
+        else
+            echo -e "🚀 COMANDO: nmap -sSCV -Pn -n -p $open_ports $target" | output_txt
+            nmap -sSCV -Pn -n -p "$open_ports" "$target" | output_txt
+        fi
 
-            echo
-            echo -e "${AZUL}🚀 Fase 3: Escaneo de vulnerabilidades...${RESET}"
-            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
-            echo -e "🕒 INICIO AUTO-SCAN XML (Vuln): $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
-            echo -e "🚀 COMANDO: nmap $flags_fase3 $open_ports $target -oA $archivo_fase3" | output_txt
-            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
-            echo -e "\n${CYAN}Este script puede tardar más tiempo, sobre todo si hay muchos puertos abiertos${RESET}\n"
-            
-            nmap $flags_fase3 $open_ports "$target" -oA "$archivo_fase3" | output_txt
+        # --- FASE 3: AUDITORÍA DETALLADA DE VULNERABILIDADES (NSE) ---
+        echo -e "\n${AZUL}🚀 [Fase 3] Corriendo batería de scripts NSE orientados a vulnerabilidades conocidas...${RESET}"
+        echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
+        echo -e "🕒 INICIO AUDITORÍA NSE VULN: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+        
+        if [[ "$xml_status" == "ON" ]]; then
+            echo -e "🚀 COMANDO: nmap --script vuln -Pn -n --script-args=unsafe=1 -p $open_ports $target -oA $archivo_fase3" | output_txt
+            nmap --script vuln -Pn -n --script-args=unsafe=1 -p "$open_ports" "$target" -oA "$archivo_fase3"
+            [ -f "${archivo_fase3}.nmap" ] && cat "${archivo_fase3}.nmap" | output_txt
+        else
+            echo -e "🚀 COMANDO: nmap --script vuln -Pn -n --script-args=unsafe=1 -p $open_ports $target" | output_txt
+            nmap --script vuln -Pn -n --script-args=unsafe=1 -p "$open_ports" "$target" | output_txt
+        fi
 
-            # Comprobamos si hay puertos típicos de web (80, 443, 8080, 8443) antes de lanzar Gobuster
-            if echo "$open_ports" | grep -qE "(80|443|8080|8443)"; then
-                echo
-                echo -e "${AZUL}🚀 Fase 4: Fuzzing web detectado (puertos web abiertos)...${RESET}"
+        # --- FASE 4: ANÁLISIS WEB INTELIGENTE ---
+        if echo "$open_ports" | grep -qE "(^|,)(80|443|8080|8443)(,|$)"; then
+            echo -e "\n${AZUL}🚀 [Fase 4] Entorno Web Detectado. Analizando tecnologías con WhatWeb...${RESET}"
+            echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
+            echo -e "🕒 INICIO AUTOMÁTICO WHATWEB: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+            whatweb -a 1 -t 1 -v --no-errors "$target" | tee /tmp/whatweb_out.txt
+            cat /tmp/whatweb_out.txt | output_txt
+            rm -f /tmp/whatweb_out.txt
+            echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
+
+            if [ -n "$wordlist" ] && [ -f "$wordlist" ]; then
+                echo -e "\n${AZUL}🔍 Lanzando Fuzzing Web Estructurado con Gobuster...${RESET}"
                 echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
-                echo -e "🕒 INICIO AUTO-SCAN GOBUSTER: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
-                echo -e "🚀 COMANDO: gobuster dir -u http://$target/ -w "$wordlist" ${RESET}" | output_txt
-                echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
-
-                # Ejecución real de Gobuster
-                gobuster dir -u "http://$target/" -w "$wordlist" -o "${archivo_fase4}.txt" | output_txt
+                echo -e "🕒 INICIO FUZZING: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+                
+                if [[ "$xml_status" == "ON" ]]; then
+                    echo -e "🚀 COMANDO: gobuster dir -u http://$target/ -w $wordlist -t 40 -q -o ${archivo_fase4}.txt" | output_txt
+                    gobuster dir -u "http://$target/" -w "$wordlist" -t 40 -q -o "${archivo_fase4}.txt"
+                    [ -f "${archivo_fase4}.txt" ] && cat "${archivo_fase4}.txt" | output_txt
+                else
+                    echo -e "🚀 COMANDO: gobuster dir -u http://$target/ -w $wordlist -t 40 -q" | output_txt
+                    gobuster dir -u "http://$target/" -w "$wordlist" -t 40 -q | output_txt
+                fi
             else
-                echo -e "\n${AMARILLO}⚠️ Saltando Fase 4 (Fuzzing web): No se detectaron puertos HTTP/HTTPS estándar (80, 443, 8080).${RESET}"
+                echo -e "\n${AMARILLO}⚠️ Fuzzing omitido: Diccionario global SecLists no disponible.${RESET}" | output_txt
             fi
-           
-            # Invocamos tu procesador automático de Writeups
+        else
+            echo -e "\n${AMARILLO}⏳ Saltando Fase Web: Los puertos HTTP/HTTPS estándar están cerrados.${RESET}" | output_txt
+        fi
+
+        # --- PROCESADO DE WRITEUPS E INFORME FINAL ---
+        if [[ "$xml_status" == "ON" ]]; then
+            # LLamada segura a tu función de generación de reportes Markdown/HTML/IA
             procesar_reportes
 
             echo -e "${AZUL}--------------------------------------------------${RESET}"
-            echo -e "${VERDE}✅ Reportes completos XML, HTML y Markdown procesados en: $folder${RESET}"
+            echo -e "${VERDE}✅ Estructuras de reportes dinámicos procesadas con éxito en: $folder${RESET}"
             echo -e "${AZUL}--------------------------------------------------${RESET}"
-            echo -e "${AMARILLO}⚠️ Para salir y conservar los archivos raw pulsa: Control+C ${RESET}"
-            read -n 1 -s -r -p $'\e[1;32m🚀 Para guardar solo los reportes finales pulsa: Enter\e[0m'
-            
+            echo -e "${AMARILLO}📌 Si deseas retener los volcados RAW xml/txt originales de Nmap, pulsa: Ctrl+C${RESET}"
+            read -n 1 -s -r -p $'\e[1;32m🚀 Para aplicar limpieza automática de logs RAW y dejar solo los Writeups refinados pulsa: Enter\e[0m'
 
-            # === LIMPIEZA DE ARCHIVOS TEMPORALES ===
-            # Borramos los archivos temporales de Nmap (.xml, .nmap, .gnmap)
+            # Limpieza higiénica selectiva solo si el usuario decide continuar con Enter
             rm -f "${archivo_fase2}.xml" "${archivo_fase2}.nmap" "${archivo_fase2}.gnmap"
             rm -f "${archivo_fase3}.xml" "${archivo_fase3}.nmap" "${archivo_fase3}.gnmap"
             rm -f "${archivo_fase4}.txt"
-
-            echo -e "\n${AZUL}--------------------------------------------------${RESET}"
-            echo -e "\n${VERDE}✅ Reportes limpios y estructurados listos en: $folder${RESET}"
-            echo -e "\n${AZUL}--------------------------------------------------${RESET}"
-        else
-            # Si XML está OFF, hacemos el flujo equivalente en texto plano para pantalla y log TXT
-            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
-            echo -e "🕒 INICIO AUTO-SCAN XML (Versiones): $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
-            echo -e "🚀 COMANDO: nmap $flags_fase2 $open_ports $target" | output_txt
-            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
-            nmap $flags_fase2 $open_ports "$target" | output_txt
-
-            echo
-            echo -e "${AZUL}🚀 Fase 3: Escaneo de vulnerabilidades...${RESET}"
-            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
-            echo -e "🕒 INICIO AUTO-SCAN XML (Vuln): $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
-            echo -e "🚀 COMANDO: nmap $flags_fase3 $open_ports $target" | output_txt
-            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
-            echo -e "\n${CYAN}Este script puede tardar más tiempo, sobre todo si hay muchos puertos abiertos${RESET}\n"
-            
-            nmap $flags_fase3 $open_ports "$target" | output_txt
-
-            echo
-            if echo "$open_ports" | grep -qE "(80|443|8080|8443)"; then
-                echo -e "${AZUL}🚀 Fase 4: Fuzzing web...${RESET}"
-                echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
-                echo -e "🕒 INICIO AUTO-SCAN GOBUSTER: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
-                echo -e "🚀 COMANDO: gobuster dir -u http://$target/ -w /usr/share/wordlists/dirb/common.txt" | output_txt
-                echo -e "${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
-            
-            # Ejecución real de Gobuster
-                gobuster dir -u "http://$target/" -w /usr/share/wordlists/dirb/common.txt | output_txt
-            else
-                echo -e "\n${AMARILLO}⚠️ Saltando Fase 4 (Fuzzing web): No se detectaron puertos HTTP/HTTPS estándar (80, 443, 8080).${RESET}"
-            fi
-           
         fi
 
-        echo -e "\n${VERDE}✅ Escaneo finalizado.${RESET}"
-        [[ "$txt_status" == "ON" ]] && echo -e "${VERDE}📄 Log unificado guardado en: $reporte_txt${RESET}"
+        echo -e "\n${VERDE}🏁 Proceso de Auditoría Automática Completado.${RESET}"
+        [[ "$txt_status" == "ON" ]] && echo -e "${VERDE}📄 Archivo log unificado disponible en: $reporte_txt${RESET}"
         echo ""
-        read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
+        read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú principal...\e[0m'
         continue
     fi 
 
