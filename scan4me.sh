@@ -212,6 +212,8 @@ function procesar_reportes() {
     local xml_versiones=$(ls -t "$current_folder"/nmap_auto_${target}_*_fase2.xml 2>/dev/null | head -n 1)
     local xml_vulns=$(ls -t "$current_folder"/nmap_auto_${target}_*_fase3.xml 2>/dev/null | head -n 1)
     local txt_fuzzing=$(ls -t "$current_folder"/gobuster_auto_${target}_*_fase4.txt 2>/dev/null | head -n 1)
+    # [NUEVO] Capturamos el reporte de WhatWeb
+    local txt_whatweb=$(ls -t "$current_folder"/whatweb_auto_${target}_*.txt 2>/dev/null | head -n 1)
     
     if [ -z "$xml_versiones" ]; then
         echo -e "${ROJO}⚠️ No se encontró el reporte XML base para procesar la automatización.${RESET}"
@@ -223,34 +225,65 @@ function procesar_reportes() {
     local archivo_md="$current_folder/Writeup_${target}_${timestamp}.md"
     local archivo_ia="$current_folder/ia_prompt_${target}.txt"
 
-    # [CORRECCIÓN] Declaración explícita de variables locales para evitar fugas de scope
+    # Declaración explícita de variables locales
     local total_puertos=0
     local alerta_vulns=""
     local status_web=""
     local nmap_file="${xml_versiones%.xml}.nmap"
     local vuln_file="${xml_vulns%.xml}.nmap"
 
+    # === SANEAMIENTO Y LIMPIEZA DE WHATWEB ===
+    local whatweb_limpio=""
+    if [ -f "$txt_whatweb" ] && [ -s "$txt_whatweb" ]; then
+        # 1. Filtramos los códigos de color ANSI (los símbolos raros)
+        # 2. Reemplazamos los separadores de WhatWeb para estructurarlo línea a línea
+        # 3. Limpiamos corchetes y espacios innecesarios
+        whatweb_limpio=$(sed -r "s/\x1B\[([0-9]{1,3}(;[0-9]{1,2})?)?[mGK]//g" "$txt_whatweb" | \
+                         sed 's/], /\n/g' | \
+                         sed 's/ \[\ extraction/\nextraction/g' | \
+                         tr -d '[]' | \
+                         grep -vE "^http" | \
+                         sed 's/^[ \t]*//')
+    fi
+
     # 1. Generar HTML unificado si xsltproc existe
     if command -v xsltproc &> /dev/null; then
         xsltproc "$xml_versiones" -o "$archivo_html" 2>/dev/null
         
-        # Inyectar el bloque de Gobuster en el HTML si hay resultados
-        if [ -f "$txt_fuzzing" ] && [ -s "$txt_fuzzing" ] && [ -f "$archivo_html" ]; then
+        if [ -f "$archivo_html" ]; then
             local tmp_html="${archivo_html}.tmp"
             grep -vE "</body>|</html>" "$archivo_html" > "$tmp_html"
             
-            {
-                echo ""
-                echo "<div id=\"web-fuzzing\" style=\"margin: 30px 0; padding: 20px; background: #fff; border: 1px solid #ddd; border-radius: 4px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;\">"
-                echo "  <h2 style=\"color: #005580; border-bottom: 2px solid #005580; padding-bottom: 5px; margin-top: 0;\">🌐 Fuzzing de Directorios Web (Gobuster)</h2>"
-                echo "  <pre style=\"background: #f4f4f4; padding: 15px; border-left: 5px solid #005580; overflow-x: auto; font-family: monospace; font-size: 13px; line-height: 1.5; color: #333;\">"
-                grep -vE "^=========================|^Starting gobuster|^Finished" "$txt_fuzzing" | grep -v "^$"
-                echo "  </pre>"
-                echo "</div>"
-                echo "</body>"
-                echo "</html>"
-            } >> "$tmp_html"
+            # Inyectar bloque de WhatWeb limpio en el HTML si existe
+            if [ -n "$whatweb_limpio" ]; then
+                {
+                    echo ""
+                    echo "<div id=\"web-technologies\" style=\"margin: 30px 0; padding: 20px; background: #fff; border: 1px solid #ddd; border-radius: 4px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;\">"
+                    echo "  <h2 style=\"color: #4b0082; border-bottom: 2px solid #4b0082; padding-bottom: 5px; margin-top: 0;\">🔍 Tecnologías e Infraestructura Web (WhatWeb)</h2>"
+                    echo "  <ul style=\"background: #fdf6e3; padding: 15px 15px 15px 35px; border-left: 5px solid #4b0082; font-family: monospace; font-size: 13px; line-height: 1.6; color: #586e75; border-radius: 4px;\">"
+                    while read -r tech; do
+                        [ -n "$tech" ] && echo "    <li>$tech</li>"
+                    done <<< "$whatweb_limpio"
+                    echo "  </ul>"
+                    echo "</div>"
+                } >> "$tmp_html"
+            fi
+
+            # Inyectar el bloque de Gobuster en el HTML
+            if [ -f "$txt_fuzzing" ] && [ -s "$txt_fuzzing" ]; then
+                {
+                    echo ""
+                    echo "<div id=\"web-fuzzing\" style=\"margin: 30px 0; padding: 20px; background: #fff; border: 1px solid #ddd; border-radius: 4px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;\">"
+                    echo "  <h2 style=\"color: #005580; border-bottom: 2px solid #005580; padding-bottom: 5px; margin-top: 0;\">🌐 Fuzzing de Directorios Web (Gobuster)</h2>"
+                    echo "  <pre style=\"background: #f4f4f4; padding: 15px; border-left: 5px solid #005580; overflow-x: auto; font-family: monospace; font-size: 13px; line-height: 1.5; color: #333;\">"
+                    grep -vE "^=========================|^Starting gobuster|^Finished" "$txt_fuzzing" | grep -v "^$"
+                    echo "  </pre>"
+                    echo "</div>"
+                } >> "$tmp_html"
+            fi
             
+            echo "</body>" >> "$tmp_html"
+            echo "</html>" >> "$tmp_html"
             mv "$tmp_html" "$archivo_html"
         fi
         echo -e "${VERDE}✅ Kit de Writeup HTML generado en: ${BLANCO}$(basename "$archivo_html")${RESET}"
@@ -267,7 +300,6 @@ function procesar_reportes() {
         if [ -f "$nmap_file" ]; then
             total_puertos=$(grep -E "^[0-9]+/" "$nmap_file" | grep -v "SERVICE" | wc -l)
         elif [ -f "$xml_versiones" ]; then
-            # [MEJORA] Plan B: Extraer del XML si el archivo .nmap ya fue borrado por la limpieza
             total_puertos=$(grep -c "portid=" "$xml_versiones")
         fi
 
@@ -297,8 +329,11 @@ function procesar_reportes() {
         if [ "$total_puertos" -gt 0 ]; then
             echo "1. Revisa la tabla de servicios abajo para buscar versiones obsoletas."
         fi
+        if [ -n "$whatweb_limpio" ]; then
+            echo "2. Revisa las tecnologías identificadas en la sección 5 para buscar vulnerabilidades en CMS o componentes web."
+        fi
         if [ -f "$txt_fuzzing" ] && [ -s "$txt_fuzzing" ]; then
-            echo "2. Examina los códigos \`200\` y \`301/302\` del Fuzzing Web en la sección 5."
+            echo "3. Examina los códigos \`200\` y \`301/302\` del Fuzzing Web en la sección 6."
         fi
         echo ""
         
@@ -337,9 +372,19 @@ function procesar_reportes() {
             echo "\`\`\`"
         fi
 
+        # Sección 5 de WhatWeb con formato Markdown de viñetas nativo
+        if [ -n "$whatweb_limpio" ]; then
+            echo ""
+            echo "## 🛠️ 5. Tecnologías Web Detectadas (WhatWeb)"
+            while read -r tech; do
+                [ -n "$tech" ] && echo "- $tech"
+            done <<< "$whatweb_limpio"
+        fi
+
+        # Desplazamos Gobuster a la Sección 6
         if [ -f "$txt_fuzzing" ] && [ -s "$txt_fuzzing" ]; then
             echo ""
-            echo "## 🌐 5. Fuzzing de Directorios Web (Gobuster)"
+            echo "## 🌐 6. Fuzzing de Directorios Web (Gobuster)"
             echo "\`\`\`text"
             grep -vE "^=========================|^Starting gobuster|^Finished" "$txt_fuzzing" | sed 's/^[ \t]*//' | grep -v "^$"
             echo "\`\`\`"
@@ -351,8 +396,6 @@ function procesar_reportes() {
     # 3. Archivo de texto ultra-optimizado para IA (Prompt Completo)
     local ports_list=""
     if [ -f "$xml_versiones" ]; then
-        # [CORRECCIÓN] Extraemos los puertos de forma segura desde el XML usando awk/grep nativo 
-        # para garantizar que el prompt funcione incluso después de la purga de archivos RAW .nmap
         ports_list=$(grep "portid=" "$xml_versiones" | awk -F'portid="' '{print $2}' | cut -d'"' -f1 | xargs | tr ' ' ',')
     fi
 
@@ -384,6 +427,16 @@ function procesar_reportes() {
         else
             echo "No se encontraron scripts NSE guardados en formato plano."
         fi
+        
+        # [NUEVO] Bloque de datos de WhatWeb para alimentar a la IA
+        echo ""
+        echo "[WEB_INFRASTRUCTURE_WHATWEB]"
+        if [ -n "$whatweb_limpio" ]; then
+            echo "$whatweb_limpio"
+        else
+            echo "No se detectaron tecnologías web específicas o el servicio no era HTTP."
+        fi
+        
         echo ""
         echo "[WEB_FUZZING_DIRECTORIES]"
         if [ -f "$txt_fuzzing" ] && [ -s "$txt_fuzzing" ]; then
@@ -760,14 +813,22 @@ while true; do
 
         # --- FASE 4: ANÁLISIS WEB INTELIGENTE ---
         if echo "$open_ports" | grep -qE "(^|,)(80|443|8080|8443)(,|$)"; then
+            # Definimos la ruta del archivo para almacenar WhatWeb
+            archivo_whatweb="$folder/whatweb_auto_${target}_${current_time}"
+
             echo -e "\n${AZUL}🚀 [Fase 4] Entorno Web Detectado. Analizando tecnologías con WhatWeb...${RESET}"
             echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
             echo -e "🕒 INICIO AUTOMÁTICO WHATWEB: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
-            whatweb -a 1 -t 1 -v --no-errors "$target" | tee /tmp/whatweb_out.txt
-            cat /tmp/whatweb_out.txt | output_txt
-            rm -f /tmp/whatweb_out.txt
+            
+            if [[ "$xml_status" == "ON" ]]; then
+                echo -e "🚀 COMANDO: whatweb -a 1 -t 1 -v --no-errors $target (Guardando en reporte)" | output_txt
+                # Lanzamos whatweb, guardamos en archivo para el reporte y mandamos al log general
+                whatweb -a 1 -t 1 -v --no-errors "$target" | tee "${archivo_whatweb}.txt" | output_txt
+            else
+                echo -e "🚀 COMANDO: whatweb -a 1 -t 1 -v --no-errors $target" | output_txt
+                whatweb -a 1 -t 1 -v --no-errors "$target" | output_txt
+            fi
             echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
-
             if [ -n "$wordlist" ] && [ -f "$wordlist" ]; then
                 echo -e "\n${AZUL}🔍 Lanzando Fuzzing Web Estructurado con Gobuster...${RESET}"
                 echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
@@ -803,6 +864,7 @@ while true; do
             rm -f "${archivo_fase2}.xml" "${archivo_fase2}.nmap" "${archivo_fase2}.gnmap"
             rm -f "${archivo_fase3}.xml" "${archivo_fase3}.nmap" "${archivo_fase3}.gnmap"
             rm -f "${archivo_fase4}.txt"
+            rm -f "${archivo_whatweb}.txt"
         fi
 
         echo -e "\n${VERDE}🏁 Proceso de Auditoría Automática Completado.${RESET}"
