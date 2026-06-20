@@ -266,8 +266,45 @@ function procesar_reportes() {
         echo "📅 **Fecha de Auditoría:** $(date '+%d-%m-%Y %H:%M:%S')"
         echo "💻 **Objetivo (Target IP):** \`$target\`"
         echo ""
+               # --- [CÁLCULOS PARA EL RESUMEN EJECUTIVO] ---
+        # Contar puertos abiertos de forma segura
+        if [ -f "$nmap_file" ]; then
+            total_puertos=$(grep -E "^[0-9]+/" "$nmap_file" | grep -v "SERVICE" | wc -l)
+        else
+            total_puertos=0
+        fi
+
+        # Buscar indicios de vulnerabilidades críticas (VULNERABLE, CVE, Exploit)
+        if [ -f "$vuln_file" ] && grep -qiE "vulnerable|cve-|exploit" "$vuln_file"; then
+            alerta_vulns="⚠️ **SÍ** (Revisa la sección 4 inmediatamente)"
+        else
+            alerta_vulns="✅ No se detectaron patrones obvios a primera vista"
+        fi
+
+        # Contar directorios web descubiertos
+        if [ -f "$txt_fuzzing" ] && [ -s "$txt_fuzzing" ]; then
+            total_web=$(grep -vE "^====|^Start|^Finish|^$" "$txt_fuzzing" | wc -l)
+            status_web="$total_web directorios/archivos encontrados"
+        else
+            status_web="No ejecutado o sin resultados"
+        fi
+        # --------------------------------------------
+
         echo "## 📝 1. Resumen Ejecutivo"
-        echo "Informe automático de vulnerabilidades y reconocimiento generado para entornos CTF."
+        echo "Este es un escaneo automatizado de reconocimiento rápido para el entorno CTF."
+        echo ""
+        echo "### 📊 Métricas Clave de la Máquina:"
+        echo "- **Puertos Abiertos Detectados:** \`$total_puertos\`"
+        echo "- **¿Vulnerabilidades Potenciales?:** $alerta_vulns"
+        echo "- **Estado del Fuzzing Web:** \`$status_web\`"
+        echo ""
+        echo "💡 **Próximos pasos recomendados:**"
+        if [ "$total_puertos" -gt 0 ]; then
+            echo "1. Revisa la tabla de servicios abajo para buscar versiones obsoletas."
+        fi
+        if [ -f "$txt_fuzzing" ] && [ -s "$txt_fuzzing" ]; then
+            echo "2. Examina los códigos \`200\` y \`301/302\` del Fuzzing Web en la sección 5."
+        fi
         echo ""
         echo "## 🚪 2. Puertos y Servicios Detectados"
         echo "| Puerto | Estado | Servicio | Versión |"
