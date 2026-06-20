@@ -212,7 +212,6 @@ function procesar_reportes() {
     local xml_versiones=$(ls -t "$current_folder"/nmap_auto_${target}_*_fase2.xml 2>/dev/null | head -n 1)
     local xml_vulns=$(ls -t "$current_folder"/nmap_auto_${target}_*_fase3.xml 2>/dev/null | head -n 1)
     local txt_fuzzing=$(ls -t "$current_folder"/gobuster_auto_${target}_*_fase4.txt 2>/dev/null | head -n 1)
-    # [NUEVO] Capturamos el reporte de WhatWeb
     local txt_whatweb=$(ls -t "$current_folder"/whatweb_auto_${target}_*.txt 2>/dev/null | head -n 1)
     
     if [ -z "$xml_versiones" ]; then
@@ -232,12 +231,14 @@ function procesar_reportes() {
     local nmap_file="${xml_versiones%.xml}.nmap"
     local vuln_file="${xml_vulns%.xml}.nmap"
 
-    # === SANEAMIENTO Y LIMPIEZA DE WHATWEB ===
+    # === [CORRECCIÓN] Conteo preciso de puertos realmente ABIERTOS desde el XML ===
+    if [ -f "$xml_versiones" ]; then
+        total_puertos=$(grep -c 'state="open"' "$xml_versiones" 2>/dev/null)
+    fi
+
+    # Saneamiento de WhatWeb
     local whatweb_limpio=""
     if [ -f "$txt_whatweb" ] && [ -s "$txt_whatweb" ]; then
-        # 1. Filtramos los códigos de color ANSI (los símbolos raros)
-        # 2. Reemplazamos los separadores de WhatWeb para estructurarlo línea a línea
-        # 3. Limpiamos corchetes y espacios innecesarios
         whatweb_limpio=$(sed -r "s/\x1B\[([0-9]{1,3}(;[0-9]{1,2})?)?[mGK]//g" "$txt_whatweb" | \
                          sed 's/], /\n/g' | \
                          sed 's/ \[\ extraction/\nextraction/g' | \
@@ -249,12 +250,10 @@ function procesar_reportes() {
     # 1. Generar HTML unificado si xsltproc existe
     if command -v xsltproc &> /dev/null; then
         xsltproc "$xml_versiones" -o "$archivo_html" 2>/dev/null
-        
         if [ -f "$archivo_html" ]; then
             local tmp_html="${archivo_html}.tmp"
             grep -vE "</body>|</html>" "$archivo_html" > "$tmp_html"
             
-            # Inyectar bloque de WhatWeb limpio en el HTML si existe
             if [ -n "$whatweb_limpio" ]; then
                 {
                     echo ""
@@ -269,7 +268,6 @@ function procesar_reportes() {
                 } >> "$tmp_html"
             fi
 
-            # Inyectar el bloque de Gobuster en el HTML
             if [ -f "$txt_fuzzing" ] && [ -s "$txt_fuzzing" ]; then
                 {
                     echo ""
@@ -296,13 +294,6 @@ function procesar_reportes() {
         echo "💻 **Objetivo (Target IP):** \`$target\`"
         echo ""
 
-        # --- [CÁLCULOS DINÁMICOS PARA EL RESUMEN EJECUTIVO] ---
-        if [ -f "$nmap_file" ]; then
-            total_puertos=$(grep -E "^[0-9]+/" "$nmap_file" | grep -v "SERVICE" | wc -l)
-        elif [ -f "$xml_versiones" ]; then
-            total_puertos=$(grep -c "portid=" "$xml_versiones")
-        fi
-
         if [ -f "$vuln_file" ] && grep -qiE "vulnerable|cve-|exploit" "$vuln_file"; then
             alerta_vulns="⚠️ **SÍ** (Revisa la sección 4 inmediatamente)"
         else
@@ -315,7 +306,6 @@ function procesar_reportes() {
         else
             status_web="No ejecutado o sin resultados web relevantes"
         fi
-        # ------------------------------------------------------
 
         echo "## 📝 1. Resumen Ejecutivo"
         echo "Este es un escaneo automatizado de reconocimiento rápido para el entorno CTF."
@@ -341,15 +331,18 @@ function procesar_reportes() {
         echo "| Puerto | Estado | Servicio | Versión |"
         echo "| :---: | :---: | :--- | :--- |"
         
-        if [ -f "$nmap_file" ]; then
-            grep -E "^[0-9]+/" "$nmap_file" | grep -v "SERVICE" | while read -r line; do
-                p_data=$(echo "$line" | tr -s ' ')
-                p_id=$(echo "$p_data" | cut -d' ' -f1)
-                p_stat=$(echo "$p_data" | cut -d' ' -f2)
-                p_serv=$(echo "$p_data" | cut -d' ' -f3)
-                p_ver=$(echo "$p_data" | cut -d' ' -f4-)
+                # === [CORRECCIÓN] Evitar bucle infinito o vacío si el firewall bloqueó la Fase 2 ===
+        if [ -f "$nmap_file" ] && [ "$total_puertos" -gt 0 ]; then
+            # Extraemos limpiamente solo las filas de puertos, ignorando scripts inferiores, formateadas por campos
+            awk '/^[0-9]+\/(tcp|udp)/ {print $1, $2, $3, $4}' "$nmap_file" | while read -r p_id p_stat p_serv p_ver_start; do
+                # Capturamos la versión completa recuperando el resto de la línea original si existiera
+                local full_line=$(grep "^$p_id" "$nmap_file" | head -n 1 | tr -s ' ')
+                local p_ver=$(echo "$full_line" | cut -d' ' -f4-)
+                
                 echo "| **$p_id** | \`$p_stat\` | $p_serv | ${p_ver:-n/a} |"
             done
+        elif [ -f "$nmap_file" ]; then
+            echo "| - | ⚠️ ALERTA: No se encontraron puertos abiertos en Fase 2. Posible bloqueo de Firewall/IDS. | - | - |"
         else
             echo "| - | No se pudo procesar la tabla de puertos (El log RAW .nmap no está disponible). | - | - |"
         fi
@@ -357,8 +350,11 @@ function procesar_reportes() {
         echo ""
         echo "## 🔍 3. Análisis de Versiones Detallado"
         echo "\`\`\`text"
-        if [ -f "$nmap_file" ]; then
+        if [ -f "$nmap_file" ] && grep -q "PORT" "$nmap_file"; then
             sed -n '/PORT/,/Nmap done/p' "$nmap_file" | grep -vE "Service detection performed|Nmap done" | sed 's/^[ \t]*//'
+        elif [ -f "$nmap_file" ]; then
+            echo "⚠️ [FALLBACK] Nmap no reportó puertos abiertos en el formato clásico. Log crudo:"
+            cat "$nmap_file"
         else
             echo "Información detallada no disponible debido a la limpieza de archivos RAW."
         fi
@@ -368,11 +364,15 @@ function procesar_reportes() {
             echo ""
             echo "## ⚡ 4. Auditoría de Vulnerabilidades (Scripts Nmap)"
             echo "\`\`\`text"
-            sed -n '/PORT/,/Nmap done/p' "$vuln_file" | grep -vE "Service detection performed|Nmap done" | sed 's/^[ \t]*//'
+            if grep -q "PORT" "$vuln_file"; then
+                sed -n '/PORT/,/Nmap done/p' "$vuln_file" | grep -vE "Service detection performed|Nmap done" | sed 's/^[ \t]*//'
+            else
+                echo "⚠️ [FALLBACK] No se extrajeron vulnerabilidades NSE porque no se detectaron puertos abiertos en esta fase."
+                cat "$vuln_file"
+            fi
             echo "\`\`\`"
         fi
 
-        # Sección 5 de WhatWeb con formato Markdown de viñetas nativo
         if [ -n "$whatweb_limpio" ]; then
             echo ""
             echo "## 🛠️ 5. Tecnologías Web Detectadas (WhatWeb)"
@@ -381,7 +381,6 @@ function procesar_reportes() {
             done <<< "$whatweb_limpio"
         fi
 
-        # Desplazamos Gobuster a la Sección 6
         if [ -f "$txt_fuzzing" ] && [ -s "$txt_fuzzing" ]; then
             echo ""
             echo "## 🌐 6. Fuzzing de Directorios Web (Gobuster)"
@@ -394,9 +393,10 @@ function procesar_reportes() {
     echo -e "${VERDE}✅ Reporte Markdown estructurado listo en: ${BLANCO}$(basename "$archivo_md")${RESET}"
 
     # 3. Archivo de texto ultra-optimizado para IA (Prompt Completo)
+    # === [CORRECCIÓN] Extraer solo los puertos que de verdad quedaron OPEN en el XML ===
     local ports_list=""
     if [ -f "$xml_versiones" ]; then
-        ports_list=$(grep "portid=" "$xml_versiones" | awk -F'portid="' '{print $2}' | cut -d'"' -f1 | xargs | tr ' ' ',')
+        ports_list=$(grep -B 1 'state="open"' "$xml_versiones" | grep "portid=" | awk -F'portid="' '{print $2}' | cut -d'"' -f1 | xargs | tr ' ' ',')
     fi
 
     {
@@ -412,23 +412,23 @@ function procesar_reportes() {
         echo "Mantén un tono académico, técnico y didáctico. Responde en español."
         echo "--- START TARGET DATA ---"
         echo "TARGET_IP: $target"
-        echo "PORTS_OPEN: ${ports_list:-Desconocidos}"
+        echo "PORTS_OPEN: ${ports_list:-Ninguno detectado abierto en Fase 2}"
         echo ""
         echo "[VERSIONS_AND_SERVICES]"
-        if [ -f "$nmap_file" ]; then
+        if [ -f "$nmap_file" ] && grep -q "PORT" "$nmap_file"; then
             sed -n '/PORT/,/Nmap done/p' "$nmap_file" | grep -vE "Service detection performed|Nmap done|SF:" | sed 's/^[ \t]*//' | grep -v "^$"
         else
-            echo "Revisa el archivo HTML unificado adjunto para ver el árbol completo de servicios e identificadores de versiones."
+            echo "Fase 2 bloqueada o sin puertos abiertos. Log de Nmap:"
+            [ -f "$nmap_file" ] && cat "$nmap_file"
         fi
         echo ""
         echo "[VULNERABILITY_SCRIPTS]"
-        if [ -f "$vuln_file" ]; then
+        if [ -f "$vuln_file" ] && grep -q "PORT" "$vuln_file"; then
             sed -n '/PORT/,/Nmap done/p' "$vuln_file" | grep -vE "Service detection performed|Nmap done" | sed 's/^[ \t]*//' | grep -v "^$"
         else
-            echo "No se encontraron scripts NSE guardados en formato plano."
+            echo "No se encontraron scripts NSE válidos o el escaneo fue bloqueado."
         fi
         
-        # [NUEVO] Bloque de datos de WhatWeb para alimentar a la IA
         echo ""
         echo "[WEB_INFRASTRUCTURE_WHATWEB]"
         if [ -n "$whatweb_limpio" ]; then
@@ -702,7 +702,7 @@ while true; do
     options=(
         "x   [CAMBIAR MODO GUARDADO TXT]        | Estado actual: $txt_status"
         "x   [CAMBIAR MODO CONFIG XML]          | Estado actual: $xml_status"
-        "1.  Auto-Scan Nmap + Gobuster (CTF)    | (-p- -sSCV + Vuln + Fuzzing)"
+        "1.  Auto-Scan recomendado para CTF     | (-p- -sSCV + Vuln + Whatweb + Fuzzing)"
         "2.  Otras opciones con Nmap (Submenú)  | nmap"
         "3.  Whatweb (Reconocimiento web)       | whatweb"
         "4.  Gobuster (Fuzzing Subdominios)     | subdomains"
