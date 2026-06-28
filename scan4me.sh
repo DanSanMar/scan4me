@@ -509,8 +509,8 @@ function despedida() {
 # Nueva función para manejar el Ctrl+C sin cerrar el script
 function interrupcion() {
     echo -e "\n\n${ROJO}⚠️ Acción cancelada por el usuario.${RESET}"
-    echo -e "${AMARILLO}[!] Regresando al menú principal...${RESET}\n"
-    sleep 1.5
+    echo -e "${AMARILLO}[!] Espere un momento...${RESET}\n"
+    sleep 0.5
     # Al no poner 'exit', Bash continuará con el bucle 'while true' principal
 }
 
@@ -749,12 +749,7 @@ while true; do
     if [ -z "$selection" ]; then
         despedida
     fi
-    #if [ -z "$selection" ]; then
-    #    echo -e "\n${ROJO}⚠️  Aviso: No has seleccionado ninguna opción (Selección vacía)\nSi lo que quieres es salir vuelve a pulsar Control+C.${RESET}\n"
-     #   read -n 1 -s -r -p $'\e[1;5;33mPulsa cualquier tecla para volver al menú...\e[0m'
-     #   continue
-    #fi
-
+    
     if [[ "$selection" == *"SALIR"* ]]; then
         despedida
     fi
@@ -911,6 +906,8 @@ while true; do
     # --- OPCIÓN 2: SUBMENÚ NMAP ---
     if [[ "$selection" == *"Nmap, otras opciones (Submenú)"* ]]; then
         while true; do
+            mostrar_logo
+            echo -e "${VERDE}🎯 Objetivo actual: ${BLANCO}$target${RESET} | ${AZUL}XML: ${xml_color}[$xml_status]${RESET} | ${MAGENTA}Guardar TXT: ${txt_color}[$txt_status]${RESET}\n"
             sub_options=(
                 "1.  [TCP] Reconocimiento Rápido OS           | -sS -O -Pn -n -vvv -T4"
                 "2.  [TCP] Escaneo de Puertos Totales (p-)    | -sS -p- -Pn -n --min-rate 5000"
@@ -994,6 +991,8 @@ while true; do
 # --- SUBMENÚ  feroxbuster  ---
     if [[ "$selection" == *"Feroxbuster"* ]]; then
         while true; do
+            mostrar_logo
+            echo -e "${VERDE}🎯 Objetivo actual: ${BLANCO}$target${RESET} | ${AZUL}XML: ${xml_color}[$xml_status]${RESET} | ${MAGENTA}Guardar TXT: ${txt_color}[$txt_status]${RESET}\n"
             
             if [ -z "$wordlist" ]; then
                 echo -e "${ROJO}❌ Error: No puedes usar Feroxbuster sin el diccionario SecLists.${RESET}"
@@ -1125,7 +1124,8 @@ while true; do
     # --- OPCIÓN 6: SUBMENÚ WINDOWS ---
     if [[ "$selection" == *"windows"* ]]; then
         while true; do
-            
+            mostrar_logo
+            echo -e "${VERDE}🎯 Objetivo actual: ${BLANCO}$target${RESET} | ${AZUL}XML: ${xml_color}[$xml_status]${RESET} | ${MAGENTA}Guardar TXT: ${txt_color}[$txt_status]${RESET}\n"
             sub_options=(
                 "1.  [Nmap] Enumeración SMB Básica (Carpetas/OS)   | nmap --script smb-os-discovery,smb-enum-shares -p 139,445 -Pn"
                 "2.  [Nmap] Enumeración NetBIOS (UDP 137)          | nmap -sU -p 137 --script nbstat -Pn"
@@ -1193,7 +1193,8 @@ while true; do
         # --- OPCIÓN 8: SUBMENÚ RECONOCIMIENTO PASIVO (FOOTPRINTING) ---
     if [[ "$selection" == *"footprinting"* ]]; then
         while true; do
-                   
+            mostrar_logo
+            echo -e "${VERDE}🎯 Objetivo actual: ${BLANCO}$target${RESET} | ${AZUL}XML: ${xml_color}[$xml_status]${RESET} | ${MAGENTA}Guardar TXT: ${txt_color}[$txt_status]${RESET}\n"
         # 1. Limpieza estricta para herramientas de dominio (WHOIS, DNSRecon, Sublist3r, Subfinder)
         dominio_limpio="${target#*://}"
         dominio_limpio="${dominio_limpio#www.}" 
