@@ -26,7 +26,7 @@ detectar_gestor() {
 GESTOR=$(detectar_gestor)
 
 # --- DEFINICIÓN DE DEPENDENCIAS ---
-dependencies=(fzf nmap whatweb feroxbuster wpscan xsltproc host arp-scan smbclient nbtscan enum4linux gobuster whois dnsrecon wafw00f sublist3r curl subfinder)
+dependencies=(fzf nmap whatweb feroxbuster wpscan xsltproc host arp-scan smbclient nbtscan enum4linux gobuster whois dnsrecon wafw00f sublist3r curl subfinder nuclei)
 
 # --- MAPEO DE NOMBRES DE PAQUETES  ---
 get_package_name() {
@@ -113,7 +113,29 @@ install_tools() {
         else
             echo -e "${AZUL}📦 Instalando paquete: $pkg...${RESET}"
             case "$GESTOR" in
-                "apt") sudo apt install -y "$pkg" ;;
+                "apt") 
+                    sudo apt install -y "$pkg" 
+                    # --- Arreglo automático exclusivo para Nuclei ---
+                    if [[ "$tool" == "nuclei" ]]; then
+                        echo -e "${AMARILLO}⚠️ El paquete apt de Kali suele fallar. Forzando instalación binaria oficial...${RESET}"
+                        # Descargar la última versión oficial estable de GitHub para sistemas de 64 bits
+                        curl -s https://api.github.com/repos/projectdiscovery/nuclei/releases/latest \
+                        | grep "browser_download_url.*linux_amd64.zip" \
+                        | cut -d : -f 2,3 \
+                        | tr -d \" \
+                        | wget -qi - -O /tmp/nuclei.zip
+                        
+                        # Descomprimir e instalar directamente en la ruta del sistema
+                        sudo unzip -o /tmp/nuclei.zip -d /usr/bin/ nuclei
+                        sudo chmod +x /usr/bin/nuclei
+                        rm -f /tmp/nuclei.zip
+                        # Inicializar y descargar las plantillas oficiales ---
+                        echo -e "${AZUL}🔄 Descargando plantillas oficiales de Nuclei (Templates)...${RESET}"
+                        sudo nuclei -update-templates
+                    else
+                        sudo apt install -y "$pkg"
+                    fi
+                    ;;
                 "dnf") sudo dnf install -y "$pkg" ;;
                 "pacman") sudo pacman -S --noconfirm "$pkg" ;;
                 "zypper") sudo zypper install -y "$pkg" ;;
@@ -537,10 +559,32 @@ subdominio=$2
 check_dependencies() {
     missing_tools=()
     for tool in "${dependencies[@]}"; do
-        # Intenta encontrarlo de forma normal, y si no, busca en la ruta de Snap
-        if ! command -v "$tool" &> /dev/null && [ ! -f "/snap/bin/$tool" ] && [ ! -f "/var/lib/snapd/snap/bin/$tool" ]; then
-            missing_tools+=("$tool")
+        # 1. Comprobación estándar en el PATH actual
+        if command -v "$tool" &> /dev/null; then
+            continue
         fi
+        
+        # 2. Comprobación en rutas de Snap
+        if [ -f "/snap/bin/$tool" ] || [ -f "/var/lib/snapd/snap/bin/$tool" ]; then
+            continue
+        fi
+
+        # 3. Arreglo específico para Nuclei en Kali Real (VirtualBox/Baremetal)
+        if [[ "$tool" == "nuclei" ]]; then
+            # Rutas comunes donde Kali/Go guardan nuclei
+            if [ -f "/usr/bin/nuclei" ] || [ -f "/usr/local/bin/nuclei" ] || [ -f "/root/go/bin/nuclei" ] || [ -f "/home/kali/go/bin/nuclei" ]; then
+                # Si existe físicamente en alguna, creamos un alias en caliente para esta sesión del script
+                if [ -f "/root/go/bin/nuclei" ] && [ ! -f "/usr/bin/nuclei" ]; then
+                    ln -sf /root/go/bin/nuclei /usr/bin/nuclei 2>/dev/null
+                elif [ -f "/home/kali/go/bin/nuclei" ] && [ ! -f "/usr/bin/nuclei" ]; then
+                    ln -sf /home/kali/go/bin/nuclei /usr/bin/nuclei 2>/dev/null
+                fi
+                continue
+            fi
+        fi
+
+        # Si no pasó ninguna validación, se añade a faltantes
+        missing_tools+=("$tool")
     done
 }
 # --- FLUJO PRINCIPAL DE DEPENDENCIAS ---
@@ -715,9 +759,12 @@ sleep 1
 # --- NORMALIZACIÓN DE COMANDOS ---
 FEROX_BIN=$(command -v feroxbuster || echo "/snap/bin/feroxbuster")
 WPSCAN_BIN=$(command -v wpscan || echo "/usr/local/bin/wpscan")
+NUCLEI_BIN=$(command -v nuclei || echo "/usr/bin/nuclei")
 
 [[ ! -x "$FEROX_BIN" ]] && FEROX_BIN="feroxbuster" 
 [[ ! -x "$WPSCAN_BIN" ]] && WPSCAN_BIN="wpscan"
+[[ ! -x "$NUCLEI_BIN" ]] && NUCLEI_BIN="/root/go/bin/nuclei"
+[[ ! -x "$NUCLEI_BIN" ]] && NUCLEI_BIN="nuclei"
 
 # BUCLE DEL MENÚ INTERACTIVO
 while true; do
@@ -734,13 +781,14 @@ while true; do
         "x   [CAMBIAR MODO GUARDADO TXT]        | Estado actual: $txt_status"
         "x   [CAMBIAR MODO CONFIG XML]          | Estado actual: $xml_status"
         "1.  Auto-Scan recomendado para CTF     | (-p- -sSCV + Vuln + Whatweb + Fuzzing)"
-        "2.  Nmap, otras opciones (Submenú)     | nmap"
-        "3.  Whatweb (Reconocimiento web)       | whatweb"
-        "4.  Gobuster (Fuzzing Subdominios)     | subdomains"
-        "5.  Feroxbuster (Submenú fuzzing)      | feroxbuster"    
-        "6.  Wpscan (reconocimiento wordpress)  | wpscan" 
-        "7.  Más opciones Windows(Submenú)      | windows"
-        "8.  Herramientas OSINT (Submenú)       | footprinting" 
+        "2.  Nuclei (Submenú)                   | nuclei"
+        "3.  Nmap, otras opciones (Submenú)     | nmap"
+        "4.  Whatweb (Reconocimiento web)       | whatweb"
+        "5.  Gobuster (Fuzzing Subdominios)     | subdomains"
+        "6.  Feroxbuster (Submenú fuzzing)      | feroxbuster"    
+        "7.  Wpscan (reconocimiento wordpress)  | wpscan" 
+        "8.  Más opciones Windows(Submenú)      | windows"
+        "9.  Herramientas OSINT (Submenú)       | footprinting" 
         "x.            -- SALIR --              | exit"
     )
 
@@ -903,7 +951,111 @@ while true; do
         continue
     fi 
 
-    # --- OPCIÓN 2: SUBMENÚ NMAP ---
+
+# --- OPCIÓN 9: SUBMENÚ NUCLEI ---
+    if [[ "$selection" == *"nuclei"* ]] || [[ "$selection" == *"Nuclei"* ]]; then
+        # Rastreo físico del binario para entornos VirtualBox / Sudo
+        if command -v nuclei &> /dev/null; then
+            NUCLEI_BIN=$(command -v nuclei)
+        elif [ -f "/usr/bin/nuclei" ]; then
+            NUCLEI_BIN="/usr/bin/nuclei"
+        elif [ -f "/usr/local/bin/nuclei" ]; then
+            NUCLEI_BIN="/usr/local/bin/nuclei"
+        elif [ -f "/root/go/bin/nuclei" ]; then
+            NUCLEI_BIN="/root/go/bin/nuclei"
+        elif [ -f "/home/kali/go/bin/nuclei" ]; then
+            NUCLEI_BIN="/home/kali/go/bin/nuclei"
+        else
+            NUCLEI_BIN="nuclei"
+        fi
+
+        while true; do
+            mostrar_logo  # Limpia la pantalla y redibuja tu banner superior
+            echo -e "${VERDE}🎯 Objetivo actual: ${BLANCO}$target${RESET} | ${AZUL}XML: ${xml_color}[$xml_status]${RESET} | ${MAGENTA}Guardar TXT: ${txt_color}[$txt_status]${RESET}\n"
+            
+            # Formateamos el target para que Nuclei siempre reciba un formato URL válido (http/https)
+            url_nuclei="$target"
+            if [[ ! "$url_nuclei" =~ ^https?:// ]]; then
+                url_nuclei="http://$url_nuclei"
+            fi
+
+            sub_options=(
+                "1.  [🤖 AUTO] Escaneo Inteligente Tecnológico (-as)       | -as"
+                "2.  [🔥 CRÍTICO] Solo severidades Crítica y Alta          | -severity critical,high"
+                "3.  [🛡️ COMPLETO] Escaneo Estándar (Todas las plantillas) | "
+                "4.  [🏷️ TAGS] Escaneo por etiquetas (cve, panel, tech)    | -tags cve,panel,tech"
+                "5.  [🔄 UPDATE] Actualizar motor y plantillas YAML        | -update-templates"
+                "x.  -- Volver al menú principal...                        | back"
+            )
+
+            sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="☢️ Perfiles de Nuclei: " --height=25% --layout=reverse --border)
+
+            # Control de salida rápido con un solo Ctrl+C o ESC
+            if [ -z "$sub_selection" ]; then
+                despedida
+            fi
+
+            # Control voluntario para volver atrás
+            if [[ "$sub_selection" == *"Volver"* || "$sub_selection" == *"back"* ]]; then
+                break
+            fi
+
+            # Extraemos los argumentos específicos de Nuclei a la derecha del pipe '|'
+            nuclei_args=$(echo "$sub_selection" | awk -F "|" '{print $2}' | xargs)
+
+            # Generamos nombres de reporte limpios basados en marcas de tiempo
+            nuclei_timestamp=$(date +%H%M%S)
+            # CORRECCIÓN: Cambiado $nuclei_nuclei_timestamp por $nuclei_timestamp para que use la variable correcta
+            reporte_nuclei_txt="$folder/nuclei_${target_safe}_${nuclei_timestamp}.txt"
+            reporte_nuclei_json="$folder/nuclei_${target_safe}_${nuclei_timestamp}.json"
+
+            # Si la opción elegida es solo actualizar plantillas, no concatenamos el target
+            if [[ "$sub_selection" == *"Actualizar"* ]]; then
+                cmd_raw="$NUCLEI_BIN $nuclei_args"
+            else
+                # Construimos el comando base dependiendo de si se requiere guardar reporte dedicado
+                if [[ "$xml_status" == "ON" ]]; then
+                    cmd_raw="$NUCLEI_BIN -u $url_nuclei $nuclei_args -json-export $reporte_nuclei_json"
+                elif [[ "$txt_status" == "ON" ]]; then
+                    cmd_raw="$NUCLEI_BIN -u $url_nuclei $nuclei_args -o $reporte_nuclei_txt"
+                else
+                    cmd_raw="$NUCLEI_BIN -u $url_nuclei $nuclei_args"
+                fi
+            fi
+
+            if [[ "$txt_status" == "OFF" ]]; then 
+                echo -e "${AMARILLO}⏳ Ejecutando Nuclei... Esto puede demorar según el perfil.${RESET}"
+            fi
+
+            # Encabezado para tu archivo de LOG unificado
+            echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
+            echo -e "🕒 INICIO NUCLEI: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+            echo -e "🚀 COMANDO: $cmd_raw" | output_txt
+            echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
+
+            # Ejecutamos el comando de forma segura
+            eval "$cmd_raw" 2>&1 | output_txt
+
+            # Avisos de finalización y guardado
+            if [[ "$xml_status" == "ON" && ! "$sub_selection" == *"Actualizar"* ]]; then
+                echo -e "\n${VERDE}🌐 Reporte estructurado JSON guardado en: $reporte_nuclei_json${RESET}"
+            elif [[ "$txt_status" == "ON" && ! "$sub_selection" == *"Actualizar"* ]]; then
+                # Si guardó en un TXT dedicado, adjuntamos opcionalmente su contenido al log general
+                if [ -f "$reporte_nuclei_txt" ]; then
+                    cat "$reporte_nuclei_txt" >> "$reporte_txt"
+                fi
+                echo -e "\n${VERDE}✅ Reporte limpio guardado en: $reporte_nuclei_txt${RESET}"
+            fi
+
+            [[ "$txt_status" == "ON" ]] && echo -e "${VERDE}📄 Log unificado actualizado en: $reporte_txt${RESET}"
+            
+            # Pausa obligatoria antes de que 'mostrar_logo' limpie la pantalla
+            echo -e "\n${AMARILLO}Presiona [ENTER] para regresar al submenú de Nuclei...${RESET}"
+            read -r
+        done
+        continue
+    fi
+    # --- OPCIÓN : SUBMENÚ NMAP ---
     if [[ "$selection" == *"Nmap, otras opciones (Submenú)"* ]]; then
         while true; do
             mostrar_logo
