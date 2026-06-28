@@ -707,10 +707,10 @@ while true; do
         "2.  Otras opciones con Nmap (Submenú)  | nmap"
         "3.  Whatweb (Reconocimiento web)       | whatweb"
         "4.  Gobuster (Fuzzing Subdominios)     | subdomains"
-        "5.  Feroxbuster (fuzzing web)          | feroxbuster"    
+        "5.  Feroxbuster (Submenú fuzzing)      | feroxbuster"    
         "6.  Wpscan (reconocimiento wordpress)  | wpscan" 
-        "7.  Otras opciones (solo windows)      | windows"
-        "8.  Reconocimiento Pasivo / OSINT      | footprinting" 
+        "7.  Otras opciones (Submenú windows)   | windows"
+        "8.  Herramientas OSINT (Submenú)       | footprinting" 
         "x.            -- SALIR --              | exit"
     )
 
@@ -877,65 +877,68 @@ while true; do
 
     # --- OPCIÓN 2: SUBMENÚ NMAP ---
     if [[ "$selection" == *"Nmap (Submenú)"* ]]; then
-        sub_options=(
-            "1.  [TCP] Reconocimiento Rápido OS           | -sS -O -Pn -n -vvv -T4"
-            "2.  [TCP] Escaneo de Puertos Totales (p-)    | -sS -p- -Pn -n --min-rate 5000"
-            "3.  [TCP] Escaneo Agresivo Completo (-A)     | -A -Pn -v"
-            "4.  [TCP] Enumeración de Servicios (sCV)     | -sS -sCV -Pn -v -p"
-            "5.  [VULN] Escaneo de Vulnerabilidades       | --script vuln -v -Pn -p"
-            "6.  [EVASIÓN] Mapeo de Firewall (ACK Scan)   | -sA -Pn -vv -T4"
-            "7.  [EVASIÓN] Bypass (Señuelos + DNS Src)    | -sS -Pn -vv -f -D RND:5 -g 53 --data-length 25 --max-rate 100"
-            "8.  [UDP] Discovery Rápido (Top 20 Puertos)  | -sU -Pn --top-ports 20 -T4"
-            "9.  [UDP] Investigación Profunda (Versiones) | -sU -sV -Pn -p"
-            "10. [WEB] Recon Básica (Enum, Robots, Title) | --script http-enum,http-robots.txt,http-title -p 80,443 -Pn"
-            "11. [WEB] Recon Completo (Vulns Web)         | --script http-vuln-* -p 80,443 -v -Pn"
-            "b. << Volver al menú principal"
-        )
-        
-        # Usamos una variable separada (sub_selection) para no pisar la lógica global
-        sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="🛠 Opciones de Nmap: " --height=25% --layout=reverse --border)
-        
-        [[ "$sub_selection" == *"Volver"* || -z "$sub_selection" ]] && continue
-
-        flags=$(echo "$sub_selection" | awk -F "|" "{print \$2}" | xargs)
-
-        if [[ "$flags" == *"-p" ]]; then
-            echo -e -n "${AMARILLO}🔢 Introduce los puertos (ej: 80,443): ${RESET}"
-            read -r ports
-            if [ -z "$ports" ]; then
-                echo -e "${ROJO}❌ Error: Para esta opción debes indicar puertos.${RESET}"
-                sleep 1
-                continue
-            fi
-            flags="${flags} ${ports}"
-        fi
-
-        if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando Nmap...${RESET}"; fi
-        echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
-        if [[ "$sub_selection" == *"Web Recon"* ]]; then
-            echo -e "🕒 INICIO WEB RECON (Nmap): $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
-        else
-            echo -e "🕒 INICIO NMAP: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
-        fi
-        echo -e "🚀 COMANDO: nmap $flags $target" | output_txt
-        echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n" | output_txt
-       
-        if [[ "$xml_status" == "ON" ]]; then
-            if [[ "$sub_selection" == *"Web Recon"* ]]; then prefix="web_recon"; else prefix="nmap"; fi
+        while true; do
+            sub_options=(
+                "1.  [TCP] Reconocimiento Rápido OS           | -sS -O -Pn -n -vvv -T4"
+                "2.  [TCP] Escaneo de Puertos Totales (p-)    | -sS -p- -Pn -n --min-rate 5000"
+                "3.  [TCP] Escaneo Agresivo Completo (-A)     | -A -Pn -v"
+                "4.  [TCP] Enumeración de Servicios (sCV)     | -sS -sCV -Pn -v -p"
+                "5.  [VULN] Escaneo de Vulnerabilidades       | --script vuln -v -Pn -p"
+                "6.  [EVASIÓN] Mapeo de Firewall (ACK Scan)   | -sA -Pn -vv -T4"
+                "7.  [EVASIÓN] Bypass (Señuelos + DNS Src)    | -sS -Pn -vv -f -D RND:5 -g 53 --data-length 25 --max-rate 100"
+                "8.  [UDP] Discovery Rápido (Top 20 Puertos)  | -sU -Pn --top-ports 20 -T4"
+                "9.  [UDP] Investigación Profunda (Versiones) | -sU -sV -Pn -p"
+                "10. [WEB] Recon Básica (Enum, Robots, Title) | --script http-enum,http-robots.txt,http-title -p 80,443 -Pn"
+                "11. [WEB] Recon Completo (Vulns Web)         | --script http-vuln-* -p 80,443 -v -Pn"
+                "b. << Volver al menú principal"
+            )
             
-            archivo_xml="$folder/${prefix}_${target}_$(date +%H%M%S).xml"
-            nmap $flags -oX "$archivo_xml" "$target" | output_txt
-            echo -e "\n${VERDE}🌐 XML guardado en: $archivo_xml${RESET}"
-        else
-            nmap $flags "$target" | output_txt
-        fi
-    
-        [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}📄 Reporte guardado en: $reporte_txt${RESET}"
-        echo -e "\n${AZUL}--------------------------------------------------${RESET}"
-        echo -e "${VERDE}✅ Escaneo finalizado.${RESET}"
+            # Usamos una variable separada (sub_selection) para no pisar la lógica global
+            sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="🛠 Opciones de Nmap: " --height=25% --layout=reverse --border)
+            
+            [[ "$sub_selection" == *"Volver"* || -z "$sub_selection" ]] && continue
+
+            flags=$(echo "$sub_selection" | awk -F "|" "{print \$2}" | xargs)
+
+            if [[ "$flags" == *"-p" ]]; then
+                echo -e -n "${AMARILLO}🔢 Introduce los puertos (ej: 80,443): ${RESET}"
+                read -r ports
+                if [ -z "$ports" ]; then
+                    echo -e "${ROJO}❌ Error: Para esta opción debes indicar puertos.${RESET}"
+                    sleep 1
+                    continue
+                fi
+                flags="${flags} ${ports}"
+            fi
+
+            if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando Nmap...${RESET}"; fi
+            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
+            if [[ "$sub_selection" == *"Web Recon"* ]]; then
+                echo -e "🕒 INICIO WEB RECON (Nmap): $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+            else
+                echo -e "🕒 INICIO NMAP: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+            fi
+            echo -e "🚀 COMANDO: nmap $flags $target" | output_txt
+            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n" | output_txt
         
-        echo
-        read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
+            if [[ "$xml_status" == "ON" ]]; then
+                if [[ "$sub_selection" == *"Web Recon"* ]]; then prefix="web_recon"; else prefix="nmap"; fi
+                
+                archivo_xml="$folder/${prefix}_${target}_$(date +%H%M%S).xml"
+                nmap $flags -oX "$archivo_xml" "$target" | output_txt
+                echo -e "\n${VERDE}🌐 XML guardado en: $archivo_xml${RESET}"
+            else
+                nmap $flags "$target" | output_txt
+            fi
+        
+            [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}📄 Reporte guardado en: $reporte_txt${RESET}"
+            echo -e "\n${AZUL}--------------------------------------------------${RESET}"
+            echo -e "${VERDE}✅ Escaneo finalizado.${RESET}"
+            
+            echo ""
+            read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para continuar en este submenú...\e[0m'
+                
+        done 
         continue
     fi
 
@@ -954,104 +957,111 @@ while true; do
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
         continue
     fi
-
+# --- SUBMENÚ  feroxbuster  ---
     if [[ "$selection" == *"Feroxbuster"* ]]; then
-        if [ -z "$wordlist" ]; then
-            echo -e "${ROJO}❌ Error: No puedes usar Feroxbuster sin el diccionario SecLists.${RESET}"
-            read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
-            continue
-        fi
-        
-        # --- SUBMENÚ DE PERFILES DE VELOCIDAD ---
-        sub_options=(
-            "1.  [🔥 AGRESIVO] 100 Hilos, Timeout 3s (Muy rápido / Ruidoso)   | --threads 100 --timeout 3 --no-recursion"
-            "2.  [⚖️  NORMAL] 50 Hilos, Timeout 5s (Equilibrado)              | --threads 50 --timeout 5 --no-recursion"
-            "3.  [🐢 LENTO] 20 Hilos, Timeout 10s, Recursivo (Profundo)      | --threads 20 --timeout 10 --depth 2"
-            "4.  [🥷 SIGILOSO] 1 Hilo, Random Agent, Rate Limit 2/s (Evasión)| --threads 1 --timeout 15 --rate-limit 2 --random-agent --no-recursion"
-            "x.  << Volver al menú principal                                 | back"
-        )
-        
-        sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="🌐 Perfiles de Feroxbuster: " --height=22% --layout=reverse --border)
-        
-        [[ "$sub_selection" == *"Volver"* || -z "$sub_selection" ]] && continue
-        
-        # Extraemos los argumentos específicos a la derecha del pipe '|'
-        profile_args=$(echo "$sub_selection" | awk -F "|" '{print $2}' | xargs)
-        
-        url="$target"
-        if [[ ! "$url" =~ ^https?:// ]]; then
-            url="http://$url"
-        fi
-
-        # Sanitizar el target para evitar problemas de carpetas si contiene barras /
-        target_safe=$(echo "$target" | tr '/' '_')
-        ferox_timestamp=$(date +%H%M%S)
-        ferox_txt="$folder/feroxbuster_${target_safe}_${ferox_timestamp}.txt"
-        ferox_json="$folder/feroxbuster_${target_safe}_${ferox_timestamp}.json"
-
-        if [[ "$txt_status" == "OFF" ]]; then 
-            echo -e "${AMARILLO}⏳ Ejecutando feroxbuster...${RESET}"; 
-        fi
-        
-        # Guardamos el encabezado inicial en el reporte unificado
-        echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
-        echo -e "🕒 INICIO feroxbuster: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
-        
-        # Convertimos los argumentos dinámicos del perfil seleccionado en un array
-        read -r -a custom_args <<< "$profile_args"
-        
-        # Argumentos base comunes + argumentos del perfil elegido de manera dinámica
-        cmd_args=("--url" "$url" "--wordlist" "$wordlist" "--extensions" "bak,zip,txt,sql,old,php.bak" "--filter-size" "0" "${custom_args[@]}")
-
-        if [[ "$xml_status" == "ON" ]]; then
-            echo -e "🚀 COMANDO: feroxbuster ${cmd_args[*]} --json --output $ferox_json" | output_txt
-            echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
-            
-            # Ejecución nativa en formato JSON (Guarda el archivo completo)
-            $FEROX_BIN "${cmd_args[@]}" --json --output "$ferox_json"
-            
-            # SI EL TXT ESTÁ ACTIVADO: Extraemos los hallazgos del JSON y los guardamos limpios en el TXT unificado
-            if [[ "$txt_status" == "ON" ]] && [ -f "$ferox_json" ]; then
-                {
-                    echo ""
-                    echo "🌐 [Resultados extraídos del reporte estructurado JSON]:"
-                    grep '"status"' "$ferox_json" | while read -r line; do
-                        status=$(echo "$line" | grep -o '"status":[0-9]*' | cut -d':' -f2)
-                        v_url=$(echo "$line" | grep -o '"url":"[^"]*"' | cut -d'"' -f4)
-                        if [ -n "$v_url" ]; then
-                            echo "   [+] $status - $v_url"
-                        fi
-                    done
-                    echo ""
-                } >> "$reporte_txt"
+        while true; do
+            echo -e "\n${AZUL}🌐 Configuración de Feroxbuster:${RESET}"
+            echo -e "${AMARILLO}🔹 Objetivo: $target${RESET}"
+            echo -e "${AMARILLO}🔹 Diccionario SecLists: ${wordlist:-No disponible}${RESET}"
+            echo -e "${AMARILLO}🔹 Guardar TXT: $txt_status${RESET}"
+            echo -e "${AMARILLO}🔹 Guardar XML: $xml_status${RESET}\n"
+            if [ -z "$wordlist" ]; then
+                echo -e "${ROJO}❌ Error: No puedes usar Feroxbuster sin el diccionario SecLists.${RESET}"
+                read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
+                continue
             fi
-            echo -e "\n${VERDE}🌐 Reporte estructurado JSON guardado en: $ferox_json${RESET}"
-        else
-            # MODO ESTÁNDAR (XML OFF)
-            if [[ "$txt_status" == "ON" ]]; then
-                echo -e "🚀 COMANDO: feroxbuster ${cmd_args[*]} --output $ferox_txt" | output_txt
+            
+            # --- SUBMENÚ  ---
+            sub_options=(
+                "1.  [🔥 AGRESIVO] 100 Hilos, Timeout 3s (Muy rápido / Ruidoso)   | --threads 100 --timeout 3 --no-recursion"
+                "2.  [⚖️  NORMAL] 50 Hilos, Timeout 5s (Equilibrado)              | --threads 50 --timeout 5 --no-recursion"
+                "3.  [🐢 LENTO] 20 Hilos, Timeout 10s, Recursivo (Profundo)      | --threads 20 --timeout 10 --depth 2"
+                "4.  [🥷 SIGILOSO] 1 Hilo, Random Agent, Rate Limit 2/s (Evasión)| --threads 1 --timeout 15 --rate-limit 2 --random-agent --no-recursion"
+                "x.  << Volver al menú principal                                 | back"
+            )
+            
+            sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="🌐 Perfiles de Feroxbuster: " --height=22% --layout=reverse --border)
+            
+            [[ "$sub_selection" == *"Volver"* || -z "$sub_selection" ]] && continue
+            
+            # Extraemos los argumentos específicos a la derecha del pipe '|'
+            profile_args=$(echo "$sub_selection" | awk -F "|" '{print $2}' | xargs)
+            
+            url="$target"
+            if [[ ! "$url" =~ ^https?:// ]]; then
+                url="http://$url"
+            fi
+
+            # Sanitizar el target para evitar problemas de carpetas si contiene barras /
+            target_safe=$(echo "$target" | tr '/' '_')
+            ferox_timestamp=$(date +%H%M%S)
+            ferox_txt="$folder/feroxbuster_${target_safe}_${ferox_timestamp}.txt"
+            ferox_json="$folder/feroxbuster_${target_safe}_${ferox_timestamp}.json"
+
+            if [[ "$txt_status" == "OFF" ]]; then 
+                echo -e "${AMARILLO}⏳ Ejecutando feroxbuster...${RESET}"; 
+            fi
+            
+            # Guardamos el encabezado inicial en el reporte unificado
+            echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
+            echo -e "🕒 INICIO feroxbuster: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+            
+            # Convertimos los argumentos dinámicos del perfil seleccionado en un array
+            read -r -a custom_args <<< "$profile_args"
+            
+            # Argumentos base comunes + argumentos del perfil elegido de manera dinámica
+            cmd_args=("--url" "$url" "--wordlist" "$wordlist" "--extensions" "bak,zip,txt,sql,old,php.bak" "--filter-size" "0" "${custom_args[@]}")
+
+            if [[ "$xml_status" == "ON" ]]; then
+                echo -e "🚀 COMANDO: feroxbuster ${cmd_args[*]} --json --output $ferox_json" | output_txt
                 echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
                 
-                # Guarda el txt individual de forma nativa limpia (sin basura de barras de progreso)
-                $FEROX_BIN "${cmd_args[@]}" --output "$ferox_txt"
+                # Ejecución nativa en formato JSON (Guarda el archivo completo)
+                $FEROX_BIN "${cmd_args[@]}" --json --output "$ferox_json"
                 
-                # Volcamos de forma segura el archivo de texto limpio al log unificado
-                if [ -f "$ferox_txt" ]; then
-                    cat "$ferox_txt" >> "$reporte_txt"
+                # SI EL TXT ESTÁ ACTIVADO: Extraemos los hallazgos del JSON y los guardamos limpios en el TXT unificado
+                if [[ "$txt_status" == "ON" ]] && [ -f "$ferox_json" ]; then
+                    {
+                        echo ""
+                        echo "🌐 [Resultados extraídos del reporte estructurado JSON]:"
+                        grep '"status"' "$ferox_json" | while read -r line; do
+                            status=$(echo "$line" | grep -o '"status":[0-9]*' | cut -d':' -f2)
+                            v_url=$(echo "$line" | grep -o '"url":"[^"]*"' | cut -d'"' -f4)
+                            if [ -n "$v_url" ]; then
+                                echo "   [+] $status - $v_url"
+                            fi
+                        done
+                        echo ""
+                    } >> "$reporte_txt"
                 fi
-                echo -e "\n${VERDE}✅ Resultados individuales limpios en: $ferox_txt${RESET}"
+                echo -e "\n${VERDE}🌐 Reporte estructurado JSON guardado en: $ferox_json${RESET}"
             else
-                echo -e "🚀 COMANDO: feroxbuster ${cmd_args[*]}" | output_txt
-                echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
-                
-                # Ejecución clásica directa por pantalla sin guardar nada
-                $FEROX_BIN "${cmd_args[@]}"
+                # MODO ESTÁNDAR (XML OFF)
+                if [[ "$txt_status" == "ON" ]]; then
+                    echo -e "🚀 COMANDO: feroxbuster ${cmd_args[*]} --output $ferox_txt" | output_txt
+                    echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
+                    
+                    # Guarda el txt individual de forma nativa limpia (sin basura de barras de progreso)
+                    $FEROX_BIN "${cmd_args[@]}" --output "$ferox_txt"
+                    
+                    # Volcamos de forma segura el archivo de texto limpio al log unificado
+                    if [ -f "$ferox_txt" ]; then
+                        cat "$ferox_txt" >> "$reporte_txt"
+                    fi
+                    echo -e "\n${VERDE}✅ Resultados individuales limpios en: $ferox_txt${RESET}"
+                else
+                    echo -e "🚀 COMANDO: feroxbuster ${cmd_args[*]}" | output_txt
+                    echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
+                    
+                    # Ejecución clásica directa por pantalla sin guardar nada
+                    $FEROX_BIN "${cmd_args[@]}"
+                fi
             fi
-        fi
-        
-        [[ "$txt_status" == "ON" ]] && echo -e "${VERDE}📄 Log unificado actualizado en: $reporte_txt${RESET}"
-        echo ""
-        read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
+            
+            [[ "$txt_status" == "ON" ]] && echo -e "${VERDE}📄 Log unificado actualizado en: $reporte_txt${RESET}"
+            echo ""
+            read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
+        done
         continue
     fi
     
@@ -1083,71 +1093,82 @@ while true; do
 
     # --- OPCIÓN 6: SUBMENÚ WINDOWS ---
     if [[ "$selection" == *"windows"* ]]; then
-        sub_options=(
-            "1.  [Nmap] Enumeración SMB Básica (Carpetas/OS)   | nmap --script smb-os-discovery,smb-enum-shares -p 139,445 -Pn"
-            "2.  [Nmap] Enumeración NetBIOS (UDP 137)          | nmap -sU -p 137 --script nbstat -Pn"
-            "3.  [Nmap] Escaneo de Vulnerabilidades SMB        | nmap --script smb-vuln* -p 139,445 -Pn"
-            "4.  [SMBClient] Listar recursos (Sesión Nula)     | smbclient -L //$target -N"
-            "5.  [Nbtscan] Escaneo NetBIOS rápido              | nbtscan -r $target"
-            "6.  [Enum4Linux] Enumeración completa             | enum4linux -a $target"
-            "x.  << Volver al menú principal                   | back"
-        )
-        
-        sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="🪟 Opciones específicas para Windows: " --height=25% --layout=reverse --border)
-        
-        [[ "$sub_selection" == *"Volver"* || -z "$sub_selection" ]] && continue
-
-        # Extraemos el comando (lo que está a la derecha del '|')
-        cmd_raw=$(echo "$sub_selection" | awk -F "|" '{print $2}' | xargs)
-
-        # Separamos la lógica: Nmap soporta XML, las demás herramientas NO.
-        if [[ "$cmd_raw" == nmap* ]]; then
-            # Es un comando Nmap
-            flags=${cmd_raw#nmap } # Quitamos 'nmap ' del string para quedarnos solo con las flags
+        while true; do
+            echo -e "\n${AZUL}🪟 Submenú de Reconocimiento Windows:${RESET}"
+            echo -e "${AMARILLO}🔹 Objetivo: $target${RESET}"
+            echo -e "${AMARILLO}🔹 Guardar TXT: $txt_status${RESET}"
+            echo -e "${AMARILLO}🔹 Guardar XML: $xml_status${RESET}\n"
+            sub_options=(
+                "1.  [Nmap] Enumeración SMB Básica (Carpetas/OS)   | nmap --script smb-os-discovery,smb-enum-shares -p 139,445 -Pn"
+                "2.  [Nmap] Enumeración NetBIOS (UDP 137)          | nmap -sU -p 137 --script nbstat -Pn"
+                "3.  [Nmap] Escaneo de Vulnerabilidades SMB        | nmap --script smb-vuln* -p 139,445 -Pn"
+                "4.  [SMBClient] Listar recursos (Sesión Nula)     | smbclient -L //$target -N"
+                "5.  [Nbtscan] Escaneo NetBIOS rápido              | nbtscan -r $target"
+                "6.  [Enum4Linux] Enumeración completa             | enum4linux -a $target"
+                "x.  << Volver al menú principal                   | back"
+            )
             
-            if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando Nmap (Recon Windows)...${RESET}"; fi
+            sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="🪟 Opciones específicas para Windows: " --height=25% --layout=reverse --border)
             
-            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
-            echo -e "🕒 INICIO WINDOWS RECON: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
-            echo -e "🚀 COMANDO: nmap $flags $target" | output_txt
-            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n" | output_txt
-           
-            if [[ "$xml_status" == "ON" ]]; then
-                archivo_xml="$folder/windows_recon_${target}_$(date +%H%M%S).xml"
-                nmap $flags -oX "$archivo_xml" "$target" | output_txt
-                echo -e "\n${VERDE}🌐 XML guardado en: $archivo_xml${RESET}"
+            [[ "$sub_selection" == *"Volver"* || -z "$sub_selection" ]] && continue
+
+            # Extraemos el comando (lo que está a la derecha del '|')
+            cmd_raw=$(echo "$sub_selection" | awk -F "|" '{print $2}' | xargs)
+
+            # Separamos la lógica: Nmap soporta XML, las demás herramientas NO.
+            if [[ "$cmd_raw" == nmap* ]]; then
+                # Es un comando Nmap
+                flags=${cmd_raw#nmap } # Quitamos 'nmap ' del string para quedarnos solo con las flags
+                
+                if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando Nmap (Recon Windows)...${RESET}"; fi
+                
+                echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
+                echo -e "🕒 INICIO WINDOWS RECON: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+                echo -e "🚀 COMANDO: nmap $flags $target" | output_txt
+                echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n" | output_txt
+            
+                if [[ "$xml_status" == "ON" ]]; then
+                    archivo_xml="$folder/windows_recon_${target}_$(date +%H%M%S).xml"
+                    nmap $flags -oX "$archivo_xml" "$target" | output_txt
+                    echo -e "\n${VERDE}🌐 XML guardado en: $archivo_xml${RESET}"
+                else
+                    nmap $flags "$target" | output_txt
+                fi
+
             else
-                nmap $flags "$target" | output_txt
+                # Es otra herramienta (smbclient, nbtscan, enum4linux)
+                if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando herramienta externa...${RESET}"; fi
+                
+                echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
+                echo -e "🕒 INICIO WINDOWS RECON: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+                echo -e "🚀 COMANDO: $cmd_raw" | output_txt
+                echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n" | output_txt
+
+                # Usamos eval para que bash interprete la variable $target dentro del string cmd_raw
+                eval "$cmd_raw" 2>&1 | output_txt
+
+                if [[ "$xml_status" == "ON" ]]; then
+                    echo -e "\n${AMARILLO}⚠️ Nota: El formato XML automático de este script solo soporta comandos Nmap. El resultado se ha mostrado en pantalla y guardado en TXT (si está activado).${RESET}"
+                fi
             fi
 
-        else
-            # Es otra herramienta (smbclient, nbtscan, enum4linux)
-            if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando herramienta externa...${RESET}"; fi
+            [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}📄 Reporte guardado en: $reporte_txt${RESET}"
+            echo -e "\n${AZUL}--------------------------------------------------${RESET}"
+            echo -e "${VERDE}✅ Escaneo de Windows finalizado.${RESET}"
             
-            echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
-            echo -e "🕒 INICIO WINDOWS RECON: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
-            echo -e "🚀 COMANDO: $cmd_raw" | output_txt
-            echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n" | output_txt
-
-            # Usamos eval para que bash interprete la variable $target dentro del string cmd_raw
-            eval "$cmd_raw" 2>&1 | output_txt
-
-            if [[ "$xml_status" == "ON" ]]; then
-                echo -e "\n${AMARILLO}⚠️ Nota: El formato XML automático de este script solo soporta comandos Nmap. El resultado se ha mostrado en pantalla y guardado en TXT (si está activado).${RESET}"
-            fi
-        fi
-
-        [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}📄 Reporte guardado en: $reporte_txt${RESET}"
-        echo -e "\n${AZUL}--------------------------------------------------${RESET}"
-        echo -e "${VERDE}✅ Escaneo de Windows finalizado.${RESET}"
-        
-        echo
-        read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
+            echo
+            read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
+        done
         continue
     fi
 
         # --- OPCIÓN 8: SUBMENÚ RECONOCIMIENTO PASIVO (FOOTPRINTING) ---
     if [[ "$selection" == *"footprinting"* ]]; then
+        while true; do
+            echo -e "\n${AZUL}🕵️ Submenú de Footprinting / OSINT:${RESET}"
+            echo -e "${AMARILLO}🔹 Objetivo: $target${RESET}"
+            echo -e "${AMARILLO}🔹 Guardar TXT: $txt_status${RESET}"
+            echo -e "${AMARILLO}🔹 Guardar XML: $xml_status${RESET}\n"
         
         # 1. Limpieza estricta para herramientas de dominio (WHOIS, DNSRecon, Sublist3r, Subfinder)
         dominio_limpio="${target#*://}"
@@ -1160,63 +1181,64 @@ while true; do
         host_web="${host_web%/}"
 
         url_osint="$target"
-        if [[ ! "$url_osint" =~ ^https?:// ]]; then
-            # Si el host_web tiene forma de IP pura
-            if [[ "$host_web" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-                url_osint="http://$host_web"
-            else
-                # Si es un dominio, respetamos si lleva www. o no y usamos HTTPS
-                url_osint="https://$host_web"
+            if [[ ! "$url_osint" =~ ^https?:// ]]; then
+                # Si el host_web tiene forma de IP pura
+                if [[ "$host_web" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+                    url_osint="http://$host_web"
+                else
+                    # Si es un dominio, respetamos si lleva www. o no y usamos HTTPS
+                    url_osint="https://$host_web"
+                fi
             fi
-        fi
 
-        # 3. Comprobamos si el host web es una IP para bifurcar el menú
-        if [[ "$host_web" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-            # MENÚ RESTRINGIDO PARA IPs
-            sub_options=(
-                "1.  [WHOIS] Registro y Contactos del ASN/IP      | whois $host_web"
-                "2.  [WAFW00F] Detección de Firewall Web (WAF)    | wafw00f $url_osint"
-                "3.  [OSINT] Reverse IP Lookup (HackerTarget)     | curl -s https://api.hackertarget.com/reverseiplookup/?q=$host_web"
-                "x.  << Volver al menú principal                  | back"
-            )
-            prompt_text="🕵️ OSINT (Modo IP): "
-        else
-            # MENÚ COMPLETO PARA DOMINIOS (Incluye Sublist3r y el nuevo Subfinder)
-            sub_options=(
-                "1.  [WHOIS] Registro y Contactos del Dominio     | whois $dominio_limpio"
-                "2.  [DNSRecon] Enumeración DNS estándar          | dnsrecon -d $dominio_limpio"
-                "3.  [WAFW00F] Detección de Firewall Web (WAF)    | wafw00f $url_osint"
-                "4.  [Sublist3r] Búsqueda OSINT de Subdominios    | sublist3r -d $dominio_limpio"
-                "5.  [Subfinder] Descubrimiento Pasivo de Hosts   | subfinder -d $dominio_limpio"
-                "6.  [OSINT] Búsqueda de Hosts (HackerTarget)     | curl -s https://api.hackertarget.com/hostsearch/?q=$dominio_limpio"
-                "x.  << Volver al menú principal                  | back"
-            )
-            prompt_text="🕵️ OSINT (Modo Dominio): "
-        fi
-        
-        sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="$prompt_text" --height=25% --layout=reverse --border)
-        
-        [[ "$sub_selection" == *"Volver"* || -z "$sub_selection" ]] && continue
+            # 3. Comprobamos si el host web es una IP para bifurcar el menú
+            if [[ "$host_web" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+                # MENÚ RESTRINGIDO PARA IPs
+                sub_options=(
+                    "1.  [WHOIS] Registro y Contactos del ASN/IP      | whois $host_web"
+                    "2.  [WAFW00F] Detección de Firewall Web (WAF)    | wafw00f $url_osint"
+                    "3.  [OSINT] Reverse IP Lookup (HackerTarget)     | curl -s https://api.hackertarget.com/reverseiplookup/?q=$host_web"
+                    "x.  << Volver al menú principal                  | back"
+                )
+                prompt_text="🕵️ OSINT (Modo IP): "
+            else
+                # MENÚ COMPLETO PARA DOMINIOS (Incluye Sublist3r y el nuevo Subfinder)
+                sub_options=(
+                    "1.  [WHOIS] Registro y Contactos del Dominio     | whois $dominio_limpio"
+                    "2.  [DNSRecon] Enumeración DNS estándar          | dnsrecon -d $dominio_limpio"
+                    "3.  [WAFW00F] Detección de Firewall Web (WAF)    | wafw00f $url_osint"
+                    "4.  [Sublist3r] Búsqueda OSINT de Subdominios    | sublist3r -d $dominio_limpio"
+                    "5.  [Subfinder] Descubrimiento Pasivo de Hosts   | subfinder -d $dominio_limpio"
+                    "6.  [OSINT] Búsqueda de Hosts (HackerTarget)     | curl -s https://api.hackertarget.com/hostsearch/?q=$dominio_limpio"
+                    "x.  << Volver al menú principal                  | back"
+                )
+                prompt_text="🕵️ OSINT (Modo Dominio): "
+            fi
+            
+            sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="$prompt_text" --height=25% --layout=reverse --border)
+            
+            [[ "$sub_selection" == *"Volver"* || -z "$sub_selection" ]] && continue
 
-        # Extraemos el comando a ejecutar (lo que está a la derecha del '|')
-        cmd_raw=$(echo "$sub_selection" | awk -F "|" '{print $2}' | xargs)
+            # Extraemos el comando a ejecutar (lo que está a la derecha del '|')
+            cmd_raw=$(echo "$sub_selection" | awk -F "|" '{print $2}' | xargs)
 
-        if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando herramienta de footprinting...${RESET}"; fi
-        
-        echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
-        echo -e "🕒 INICIO FOOTPRINTING: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
-        echo -e "🚀 COMANDO: $cmd_raw" | output_txt
-        echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
+            if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando herramienta de footprinting...${RESET}"; fi
+            
+            echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
+            echo -e "🕒 INICIO FOOTPRINTING: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+            echo -e "🚀 COMANDO: $cmd_raw" | output_txt
+            echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
 
-        # Usamos eval para ejecutar el comando crudo
-        eval "$cmd_raw" 2>&1 | output_txt
+            # Usamos eval para ejecutar el comando crudo
+            eval "$cmd_raw" 2>&1 | output_txt
 
-        [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}📄 Reporte guardado en: $reporte_txt${RESET}"
-        echo -e "\n${AZUL}--------------------------------------------------${RESET}"
-        echo -e "${VERDE}✅ Reconocimiento finalizado.${RESET}"
-        
-        echo
-        read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
+            [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}📄 Reporte guardado en: $reporte_txt${RESET}"
+            echo -e "\n${AZUL}--------------------------------------------------${RESET}"
+            echo -e "${VERDE}✅ Reconocimiento finalizado.${RESET}"
+            
+            echo
+            read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
+        done
         continue
     fi
 done
