@@ -1,4 +1,4 @@
-# 🔍 Scan4Me v5.9 - ALL4ME
+# 🔍 Scan4Me v6.2- ALL4ME
 
 Scan4Me es una herramienta de auditoría y reconocimiento de red interactiva avanzada escrita en Bash. Diseñada para *pentesters* y administradores de sistemas, centraliza múltiples herramientas de seguridad en una interfaz de menú intuitiva potenciada por `fzf`, incluyendo un sistema inteligente de instalación y detección automática de dependencias.
 
@@ -6,25 +6,28 @@ Scan4Me es una herramienta de auditoría y reconocimiento de red interactiva ava
 
 ---
 
-## ✨ Características Principales (+Novedades de la v5.9)
+## ✨ Características Principales (+Novedades v6.0+)
 
 * 🎨 **Interfaz Renovada:** Salida visual optimizada de alta compatibilidad en 256 colores (`xterm-256color`) y logo dinámico en tiempo real.
 * 🗺️ **Soporte Multi-Distro:** Detección inteligente del gestor de paquetes nativo del sistema (`apt`, `dnf`, `pacman` o `zypper`).
-* 🤖 **Instalador de Dependencias Integrado:** Si falta alguna herramienta core, el script ofrece automatizar su instalación o despliega una guía detallada personalizada para tu distribución.
-* 🎯 **Modo Autodetección de Red Local:** Al ejecutarse sin parámetros, activa una fase de descubrimiento de hosts activos mediante `arp-scan` y escaneo de sondeo `nmap -sn`, permitiendo seleccionar el objetivo interactivamente con `fzf`.
-* 🕵️‍♂️ **Módulo Inteligente de OSINT (Nuevo v5.8):** Submenú especializado en reconocimiento pasivo (*footprinting*) que adapta dinámicamente sus herramientas y consultas según si el objetivo es una dirección IP o un nombre de dominio.
-* 📚 **Gestión Eficiente de SecLists:** Clonación automática opcional vía GIT en el directorio `HOME` del usuario real en caso de no encontrarse en las rutas estándar.
-* 📝 **Control de Logs Flexible:** Permitir activar o desactivar en caliente el guardado de reportes en texto plano (`.txt`) o XML desde el menú principal.
-* 🪟 **Módulo "Scan4Windows" (Nuevo v5.7):** Submenú especializado para entornos Windows que incorpora auditorías SMB, NetBIOS y ejecuciones automáticas con herramientas externas dedicadas.
-* 📊 **Kit de Writeup Automático:** Al finalizar un escaneo automático con el modo XML activo, se procesan los resultados para generar de manera automática un archivo HTML (vía `xsltproc`) y un reporte en Markdown estructurado (`.md`) ideal para documentación rápida de auditorías.
-* 🤖 **Fuzzing Web en "Auto-scan" (Nuevo v5.9):** Añadimos al modulo inicial con Nmap un Fuzzing básico con Gobuster en caso de encontrar puertos Web abiertos y se implementa en la generación de Writeups.
+* 🤖 **Instalador de Dependencias Integrado:** Si falta alguna herramienta core, el script ofrece automatizar su instalación o despliega una guía detallada personalizada para tu distribución. Incorpora parches automáticos para distribuciones específicas (como la instalación forzada del binario oficial estables de `nuclei`).
+* 🎯 **Modo Autodetección de Red Local:** Al ejecutarse sin parámetros, activa una fase de descubrimiento de hosts activos ultra-veloz combinando `arp-scan` y un barrido de ping agresivo con `nmap` limitando los tiempos de timeout y controlando tasas de paquetes. Permite seleccionar el objetivo de forma interactiva con `fzf`.
+* ☢️ **Módulo de Escaneo con Nuclei (Nuevo v6.0):** Submenú dedicado para lanzar el potente motor de ProjectDiscovery. Incluye perfiles de escaneo tecnológico inteligente (`-as`), filtrado por criticidad (Alta/Crítica), escaneos por etiquetas específicas (`cve`, `panel`, `tech`) y actualización automatizada de plantillas YAML.
+* 🕵️‍♂️ **Módulo Inteligente de OSINT:** Submenú especializado en reconocimiento pasivo (*footprinting*) que adapta dinámicamente sus herramientas y consultas según si el objetivo es una dirección IP o un nombre de dominio (WHOIS, DNSRecon, WAFW00F, Sublist3r, Subfinder y la API de HackerTarget).
+* 🌐 **Submenú Avanzado de Feroxbuster (Nuevo v6.1):** Control total de fuzzing web mediante perfiles preconfigurados: Agresivo (100 hilos), Normal (50 hilos), Profundo/Recursivo o Sigiloso (1 hilo con evasión por agentes aleatorios y límites de ratio).
+* 📚 **Gestión Eficiente de SecLists:** Clonación automática opcional vía GIT en el directorio `HOME` del usuario real en caso de no encontrarse en las rutas estándar. Capacidad de conmutar automáticamente entre diccionarios web y diccionarios DNS.
+* 📝 **Control de Logs Flexible:** Permite activar o desactivar en caliente el guardado de reportes en texto plano (`.txt`) o estructuras XML/JSON desde el menú principal.
+* 🪟 **Módulo "Scan4Windows":** Submenú especializado para entornos Windows que incorpora auditorías SMB, NetBIOS y ejecuciones automáticas con herramientas externas dedicadas (`smbclient`, `nbtscan`, `enum4linux`).
+* 📊 **Kit de Writeup Automático Mejorado:** Al finalizar el Auto-Scan inicial, procesa los resultados de Nmap, WhatWeb y Gobuster para compilar de manera automática un archivo HTML interactivo, un reporte en Markdown estructurado (`.md`) ideal para documentación, y un **Prompt Optimizado para IA** (`ia_prompt.txt`) diseñado para que un modelo de lenguaje analice la superficie de ataque y sugiera metodologías de explotación controladas.
+
 
 ---
 
 ## 🛠️ Mapeo y Gestión de Herramientas
 
 * **WPScan:** Instalado y gestionado de manera nativa a través de **Ruby Gems (gem)** para garantizar una mayor estabilidad frente a otras versiones empaquetadas.
-* **Feroxbuster:** Gestión de instalación y rutas optimizada mediante **Snap** o compilación manual.
+* **Feroxbuster:** Gestión de instalación y rutas optimizada mediante **Snap** o compilación manual. Soporta volcados nativos en JSON para parseos limpios.
+* **Nuclei:** Verificación física multiruta en entornos virtuales e instalación forzada desde los releases estables de GitHub para corregir fallos de paquetería tradicionales.
 * **OSINT Multi-Motor:** Integración combinada de múltiples herramientas pasivas externas para maximizar la recolección de subdominios y eludir las restricciones de bloqueo por scraping IP.
 * **Herramientas Windows:** Integración nativa de `smbclient`, `nbtscan` y `enum4linux` para enumeraciones avanzadas del protocolo SMB y NetBIOS.
 
@@ -32,15 +35,15 @@ Scan4Me es una herramienta de auditoría y reconocimiento de red interactiva ava
 
 ## 📋 Requisitos Previos y Dependencias
 
-El script mapea e instala automáticamente las dependencias según tu sistema operativo. El conjunto completo incluye:
+El script mapea e instala automáticamente las dependencias según tu sistema operativo. El conjunto completo actual incluye:
 
-`fzf`, `nmap`, `whatweb`, `feroxbuster`, `wpscan`, `xsltproc`, `host`, `arp-scan`, `smbclient`, `nbtscan`, `enum4linux`, `whois`, `dnsrecon`, `wafw00f`, `sublist3r`, `subfinder` y `curl`.
+`fzf`, `nmap`, `whatweb`, `feroxbuster`, `wpscan`, `xsltproc`, `host`, `arp-scan`, `smbclient`, `nbtscan`, `enum4linux`, `gobuster`, `whois`, `dnsrecon`, `wafw00f`, `sublist3r`, `subfinder`, `curl` y `nuclei`.
 
 ### El Diccionario SecLists
-El script requiere la wordlist `common.txt` de SecLists para las funciones de fuzzing web. Buscará automáticamente en el entorno de tu usuario no-root y en rutas del sistema:
-1. `$HOME/seclists/Discovery/Web-Content/common.txt`
-2. `/usr/share/seclists/Discovery/Web-Content/common.txt`
-3. `/snap/seclists/current/Discovery/Web-Content/common.txt`
+El script requiere las listas de palabras de SecLists para las funciones de fuzzing web (`common.txt`) y de subdominios (`subdomains-top1million-5000.txt`). Buscará automáticamente en el entorno de tu usuario no-root y en rutas del sistema:
+1. `$HOME/seclists/`
+2. `/usr/share/seclists/`
+3. `/snap/seclists/current/`
 
 *Si no se detecta, el menú ofrecerá clonarlo mediante un clonado rápido (`--depth 1`).*
 
