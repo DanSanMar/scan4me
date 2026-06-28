@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 export TERM=xterm-256color
+umask 000   
 
 # Colores a \033 para mayor compatibilidad
 BLANCO="\033[1;37m"
@@ -467,7 +468,7 @@ function mostrar_logo() {
     echo "     ██║  ██║███████╗███████╗      ██║██║ ╚═╝ ██║███████╗"
     echo "     ╚═╝  ╚═╝╚══════╝╚══════╝      ╚═╝╚═╝     ╚═╝╚══════╝"
     echo ""
-    echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░ --[ V 6 ]--"
+    echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░ --[ V 6.1 ]--"
     echo -e "${AZUL}--[ Escaneo Interactivo de Red con multiherramientas ]--${RESET}"
     echo -e "${BLANCO}--===============================================================${RESET}"
     echo -e "${BLANCO}--[ Auto-install + Auto-scan + Red Recon + Gobuster + Nmap +  ]--${RESET}"
@@ -960,6 +961,23 @@ while true; do
             read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
             continue
         fi
+        
+        # --- SUBMENÚ DE PERFILES DE VELOCIDAD ---
+        sub_options=(
+            "1.  [🔥 AGRESIVO] 100 Hilos, Timeout 3s (Muy rápido / Ruidoso)   | --threads 100 --timeout 3 --no-recursion"
+            "2.  [⚖️  NORMAL] 50 Hilos, Timeout 5s (Equilibrado)              | --threads 50 --timeout 5 --no-recursion"
+            "3.  [🐢 LENTO] 20 Hilos, Timeout 10s, Recursivo (Profundo)      | --threads 20 --timeout 10 --depth 2"
+            "4.  [🥷 SIGILOSO] 1 Hilo, Random Agent, Rate Limit 2/s (Evasión)| --threads 1 --timeout 15 --rate-limit 2 --random-agent --no-recursion"
+            "x.  << Volver al menú principal                                 | back"
+        )
+        
+        sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="🌐 Perfiles de Feroxbuster: " --height=22% --layout=reverse --border)
+        
+        [[ "$sub_selection" == *"Volver"* || -z "$sub_selection" ]] && continue
+        
+        # Extraemos los argumentos específicos a la derecha del pipe '|'
+        profile_args=$(echo "$sub_selection" | awk -F "|" '{print $2}' | xargs)
+        
         url="$target"
         if [[ ! "$url" =~ ^https?:// ]]; then
             url="http://$url"
@@ -972,15 +990,18 @@ while true; do
         ferox_json="$folder/feroxbuster_${target_safe}_${ferox_timestamp}.json"
 
         if [[ "$txt_status" == "OFF" ]]; then 
-        echo -e "${AMARILLO}⏳ Ejecutando feroxbuster...${RESET}"; 
+            echo -e "${AMARILLO}⏳ Ejecutando feroxbuster...${RESET}"; 
         fi
         
         # Guardamos el encabezado inicial en el reporte unificado
         echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
         echo -e "🕒 INICIO feroxbuster: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
         
-        # Argumentos base comunes
-        cmd_args=("--url" "$url" "--wordlist" "$wordlist" "--extensions" "bak,zip,txt,sql,old,php.bak" "--no-recursion" "--filter-size" "0" "--threads" "50" "--timeout" "5")
+        # Convertimos los argumentos dinámicos del perfil seleccionado en un array
+        read -r -a custom_args <<< "$profile_args"
+        
+        # Argumentos base comunes + argumentos del perfil elegido de manera dinámica
+        cmd_args=("--url" "$url" "--wordlist" "$wordlist" "--extensions" "bak,zip,txt,sql,old,php.bak" "--filter-size" "0" "${custom_args[@]}")
 
         if [[ "$xml_status" == "ON" ]]; then
             echo -e "🚀 COMANDO: feroxbuster ${cmd_args[*]} --json --output $ferox_json" | output_txt
