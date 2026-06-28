@@ -486,13 +486,43 @@ function output_txt() {
 
 function despedida() {
     echo -e "\n"
-    echo -e "${AZUL}%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%${RESET}"
-    echo -e "${BLANCO}     ¡Gracias por usar scan4me! Bye!      ${RESET}"
-    echo -e "${AZUL}%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%${RESET}"
-    exit 0
+    # Creamos un menú rápido de confirmación con fzf
+    local confirmar
+    confirmar=$(printf "Sí, salir de scan4me\nNo, continuar en el script" | fzf \
+        --prompt="⚠️ ¿Seguro que deseas salir del script? " \
+        --height=10% --layout=reverse --border)
+
+    # Si elige "Sí" o si vuelve a pulsar Ctrl+C/ESC en esta pantalla, el script se cierra de verdad
+    if [[ "$confirmar" == *"Sí"* || -z "$confirmar" ]]; then
+        echo -e "\n"
+        echo -e "${AZUL}%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%${RESET}"
+        echo -e "${BLANCO}     ¡Gracias por usar scan4me! Bye!      ${RESET}"
+        echo -e "${AZUL}%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%${RESET}"
+        exit 0
+    else
+        # Si elige "No", simplemente limpiamos la pantalla actual y no hacemos 'exit'.
+        # Al no hacer exit, el flujo del script continuará en el menú donde lo dejaste.
+        clear
+    fi
 }
 
-trap despedida SIGINT
+# Nueva función para manejar el Ctrl+C sin cerrar el script
+function interrupcion() {
+    echo -e "\n\n${ROJO}⚠️ Acción cancelada por el usuario.${RESET}"
+    echo -e "${AMARILLO}[!] Regresando al menú principal...${RESET}\n"
+    sleep 1.5
+    # Al no poner 'exit', Bash continuará con el bucle 'while true' principal
+}
+
+# Asignamos la interrupción al SIGINT (Ctrl+C)
+trap interrupcion SIGINT
+
+# Comprobación usuario root
+if [[ $EUID -ne 0 ]]; then
+   echo -e "${ROJO}❌ Este script debe ejecutarse con sudo.${RESET}" 
+   echo -e "${AMARILLO}Ejemplo: sudo $0 10.10.10.1${RESET}"
+   exit 1
+fi
 # Comprobación usuario root
 if [[ $EUID -ne 0 ]]; then
    echo -e "${ROJO}❌ Este script debe ejecutarse con sudo.${RESET}" 
@@ -704,12 +734,12 @@ while true; do
         "x   [CAMBIAR MODO GUARDADO TXT]        | Estado actual: $txt_status"
         "x   [CAMBIAR MODO CONFIG XML]          | Estado actual: $xml_status"
         "1.  Auto-Scan recomendado para CTF     | (-p- -sSCV + Vuln + Whatweb + Fuzzing)"
-        "2.  Otras opciones con Nmap (Submenú)  | nmap"
+        "2.  Nmap, otras opciones (Submenú)     | nmap"
         "3.  Whatweb (Reconocimiento web)       | whatweb"
         "4.  Gobuster (Fuzzing Subdominios)     | subdomains"
         "5.  Feroxbuster (Submenú fuzzing)      | feroxbuster"    
         "6.  Wpscan (reconocimiento wordpress)  | wpscan" 
-        "7.  Otras opciones (Submenú windows)   | windows"
+        "7.  Más opciones Windows(Submenú)      | windows"
         "8.  Herramientas OSINT (Submenú)       | footprinting" 
         "x.            -- SALIR --              | exit"
     )
@@ -717,10 +747,13 @@ while true; do
     selection=$(printf "%s\n" "${options[@]}" | fzf --prompt="🔍 Selecciona el tipo de acción: " --height=18% --layout=reverse --border)
     
     if [ -z "$selection" ]; then
-        echo -e "\n${ROJO}⚠️  Aviso: No has seleccionado ninguna opción (Selección vacía)\nSi lo que quieres es salir vuelve a pulsar Control+C.${RESET}\n"
-        read -n 1 -s -r -p $'\e[1;5;33mPulsa cualquier tecla para volver al menú...\e[0m'
-        continue
+        despedida
     fi
+    #if [ -z "$selection" ]; then
+    #    echo -e "\n${ROJO}⚠️  Aviso: No has seleccionado ninguna opción (Selección vacía)\nSi lo que quieres es salir vuelve a pulsar Control+C.${RESET}\n"
+     #   read -n 1 -s -r -p $'\e[1;5;33mPulsa cualquier tecla para volver al menú...\e[0m'
+     #   continue
+    #fi
 
     if [[ "$selection" == *"SALIR"* ]]; then
         despedida
@@ -876,7 +909,7 @@ while true; do
     fi 
 
     # --- OPCIÓN 2: SUBMENÚ NMAP ---
-    if [[ "$selection" == *"Nmap (Submenú)"* ]]; then
+    if [[ "$selection" == *"Nmap, otras opciones (Submenú)"* ]]; then
         while true; do
             sub_options=(
                 "1.  [TCP] Reconocimiento Rápido OS           | -sS -O -Pn -n -vvv -T4"
@@ -896,7 +929,8 @@ while true; do
             # Usamos una variable separada (sub_selection) para no pisar la lógica global
             sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="🛠 Opciones de Nmap: " --height=25% --layout=reverse --border)
             
-            [[ "$sub_selection" == *"Volver"* || -z "$sub_selection" ]] && continue
+            [[ -z "$sub_selection" ]] && break
+            [[ "$sub_selection" == *"Volver"* ]] && break
 
             flags=$(echo "$sub_selection" | awk -F "|" "{print \$2}" | xargs)
 
@@ -960,11 +994,7 @@ while true; do
 # --- SUBMENÚ  feroxbuster  ---
     if [[ "$selection" == *"Feroxbuster"* ]]; then
         while true; do
-            echo -e "\n${AZUL}🌐 Configuración de Feroxbuster:${RESET}"
-            echo -e "${AMARILLO}🔹 Objetivo: $target${RESET}"
-            echo -e "${AMARILLO}🔹 Diccionario SecLists: ${wordlist:-No disponible}${RESET}"
-            echo -e "${AMARILLO}🔹 Guardar TXT: $txt_status${RESET}"
-            echo -e "${AMARILLO}🔹 Guardar XML: $xml_status${RESET}\n"
+            
             if [ -z "$wordlist" ]; then
                 echo -e "${ROJO}❌ Error: No puedes usar Feroxbuster sin el diccionario SecLists.${RESET}"
                 read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
@@ -982,7 +1012,8 @@ while true; do
             
             sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="🌐 Perfiles de Feroxbuster: " --height=22% --layout=reverse --border)
             
-            [[ "$sub_selection" == *"Volver"* || -z "$sub_selection" ]] && continue
+            [[ -z "$sub_selection" ]] && break
+            [[ "$sub_selection" == *"Volver"* ]] && break
             
             # Extraemos los argumentos específicos a la derecha del pipe '|'
             profile_args=$(echo "$sub_selection" | awk -F "|" '{print $2}' | xargs)
@@ -1094,10 +1125,7 @@ while true; do
     # --- OPCIÓN 6: SUBMENÚ WINDOWS ---
     if [[ "$selection" == *"windows"* ]]; then
         while true; do
-            echo -e "\n${AZUL}🪟 Submenú de Reconocimiento Windows:${RESET}"
-            echo -e "${AMARILLO}🔹 Objetivo: $target${RESET}"
-            echo -e "${AMARILLO}🔹 Guardar TXT: $txt_status${RESET}"
-            echo -e "${AMARILLO}🔹 Guardar XML: $xml_status${RESET}\n"
+            
             sub_options=(
                 "1.  [Nmap] Enumeración SMB Básica (Carpetas/OS)   | nmap --script smb-os-discovery,smb-enum-shares -p 139,445 -Pn"
                 "2.  [Nmap] Enumeración NetBIOS (UDP 137)          | nmap -sU -p 137 --script nbstat -Pn"
@@ -1110,8 +1138,8 @@ while true; do
             
             sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="🪟 Opciones específicas para Windows: " --height=25% --layout=reverse --border)
             
-            [[ "$sub_selection" == *"Volver"* || -z "$sub_selection" ]] && continue
-
+            [[ -z "$sub_selection" ]] && break
+            [[ "$sub_selection" == *"Volver"* ]] && break
             # Extraemos el comando (lo que está a la derecha del '|')
             cmd_raw=$(echo "$sub_selection" | awk -F "|" '{print $2}' | xargs)
 
@@ -1165,11 +1193,7 @@ while true; do
         # --- OPCIÓN 8: SUBMENÚ RECONOCIMIENTO PASIVO (FOOTPRINTING) ---
     if [[ "$selection" == *"footprinting"* ]]; then
         while true; do
-            echo -e "\n${AZUL}🕵️ Submenú de Footprinting / OSINT:${RESET}"
-            echo -e "${AMARILLO}🔹 Objetivo: $target${RESET}"
-            echo -e "${AMARILLO}🔹 Guardar TXT: $txt_status${RESET}"
-            echo -e "${AMARILLO}🔹 Guardar XML: $xml_status${RESET}\n"
-        
+                   
         # 1. Limpieza estricta para herramientas de dominio (WHOIS, DNSRecon, Sublist3r, Subfinder)
         dominio_limpio="${target#*://}"
         dominio_limpio="${dominio_limpio#www.}" 
@@ -1217,8 +1241,8 @@ while true; do
             
             sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="$prompt_text" --height=25% --layout=reverse --border)
             
-            [[ "$sub_selection" == *"Volver"* || -z "$sub_selection" ]] && continue
-
+            [[ -z "$sub_selection" ]] && break
+            [[ "$sub_selection" == *"Volver"* ]] && break
             # Extraemos el comando a ejecutar (lo que está a la derecha del '|')
             cmd_raw=$(echo "$sub_selection" | awk -F "|" '{print $2}' | xargs)
 
