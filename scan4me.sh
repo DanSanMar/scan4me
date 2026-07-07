@@ -1140,7 +1140,7 @@ while true; do
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
         continue
     fi
-# --- SUBMENÚ feroxbuster (AMPLIADO Y ORDENADO POR CATEGORÍAS) ---
+# --- SUBMENÚ feroxbuster (AMPLIADO Y REORDENADO) ---
     if [[ "$selection" == *"Feroxbuster"* ]]; then
         while true; do
             mostrar_logo
@@ -1152,17 +1152,23 @@ while true; do
                 continue
             fi
             
-            # --- MENÚ COMPLETO: MANTIENE AGRESIVIDAD ORIGINAL Y AÑADE NUEVOS DICCIONARIOS/EXT ---
+            # --- MENÚ DE PERFILES AVANZADOS DE FEROXBUSTER ---
+            # Determinamos el directorio base de SecLists dinámicamente
+            sl_base="${wordlist%/Discovery/Web-Content/common.txt}"
+            
             sub_options=(
-                "1.  [⚡ VELOCIDAD] Perfil AGRESIVO (100 Hilos, No-Recursivo)  | --wordlist $wordlist --extensions bak,zip,txt,sql,old,php.bak --threads 100 --timeout 3 --no-recursion"
-                "2.  [⚡ VELOCIDAD] Perfil NORMAL (50 Hilos, Equilibrado)       | --wordlist $wordlist --extensions bak,zip,txt,sql,old,php.bak --threads 50 --timeout 5 --no-recursion"
-                "3.  [⚡ VELOCIDAD] Perfil LENTO (20 Hilos, Profundo/Recursivo) | --wordlist $wordlist --extensions bak,zip,txt,sql,old,php.bak --threads 20 --timeout 10 --depth 2"
-                "4.  [📁 EXTRA-DICT] Dirbuster Medium + Ext: php,html,js       | --wordlist /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt --extensions php,html,js --threads 50 --no-recursion"
-                "5.  [📁 EXTRA-DICT] Dirbuster Medium (Solo Directorios)       | --wordlist /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt --threads 50 --no-recursion"
-                "6.  [🎯 EXTENSIONES] SecLists Base + Ext: php,html,js         | --wordlist $wordlist --extensions php,html,js --threads 50 --no-recursion"
-                "7.  [🎯 EXTENSIONES] SecLists Base + Ext Avanzadas (Backups)  | --wordlist $wordlist --extensions zip,tar.gz,bak,rar,old,sql,txt --threads 40 --no-recursion"
-                "8.  [🥷 EVASIÓN] Perfil SIGILOSO (1 Hilo, Random Agent, WAF) | --wordlist $wordlist --extensions bak,zip,txt,sql,old,php.bak --threads 1 --timeout 15 --rate-limit 2 --random-agent --no-recursion"
-                "x.  << Volver al menú principal                              | back"
+                "1.  [⚡ RÁPIDO] Fuzzing Básico (common.txt)                      | --wordlist $wordlist --threads 50 --no-recursion"
+                "2.  [📁 CLÁSICO CTF] Dirbuster Medium (Solo Directorios)         | --wordlist $sl_base/Discovery/Web-Content/directory-list-2.3-medium.txt --threads 50 --depth 2"
+                "3.  [🚀 FULL CTF] Dirbuster Medium + Ext (php,html,txt)          | --wordlist $sl_base/Discovery/Web-Content/directory-list-2.3-medium.txt --extensions php,html,txt --threads 50 --depth 2"
+                "4.  [🐧 TECH] Entorno LAMP (Apache / PHP)                        | --wordlist $sl_base/Discovery/Web-Content/directory-list-2.3-medium.txt --extensions php,txt --threads 50 --no-recursion"
+                "5.  [🪟 TECH] Entorno IIS (Windows / ASP)                        | --wordlist $sl_base/Discovery/Web-Content/directory-list-2.3-medium.txt --extensions asp,aspx,config,txt --threads 50 --no-recursion"
+                "6.  [☕ TECH] Entorno Java (Tomcat / Spring)                     | --wordlist $sl_base/Discovery/Web-Content/directory-list-2.3-medium.txt --extensions jsp,do,action --threads 50 --no-recursion"
+                "7.  [⚙️ TECH] Scripts CGI-BIN (Shellshock)                       | --wordlist $wordlist --extensions cgi,sh,pl,py --threads 50 --no-recursion"
+                "8.  [🗄️ ARCHIVOS] Búsqueda de Backups y Configs Ocultas          | --wordlist $sl_base/Discovery/Web-Content/raft-large-files.txt --extensions bak,old,zip,tar.gz,sql,db,swp --threads 50 --no-recursion"
+                "9.  [🔌 API] Fuzzing de Endpoints API                            | --wordlist $sl_base/Discovery/Web-Content/api/api-endpoints.txt --threads 50 --no-recursion"
+                "10. [🎯 DICCIONARIO] Raft Large (Directorios Profundos)          | --wordlist $sl_base/Discovery/Web-Content/raft-large-directories.txt --threads 50 --depth 2"
+                "11. [🥷 EVASIÓN] Modo Sigiloso / WAF (Random Agent, 1 Hilo)      | --wordlist $wordlist --extensions php,html,txt --threads 1 --timeout 15 --rate-limit 2 --random-agent --no-recursion"
+                "x.  << Volver al menú principal                                  | back"
             )
             
             sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="🌐 Perfiles Avanzados de Feroxbuster: " --height=25% --layout=reverse --border)
