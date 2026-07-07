@@ -952,7 +952,7 @@ while true; do
     fi 
 
 
-# --- OPCIÓN 9: SUBMENÚ NUCLEI ---
+    # --- OPCIÓN 9: SUBMENÚ NUCLEI ---
     if [[ "$selection" == *"nuclei"* ]] || [[ "$selection" == *"Nuclei"* ]]; then
         # Rastreo físico del binario para entornos VirtualBox / Sudo
         if command -v nuclei &> /dev/null; then
@@ -1072,6 +1072,7 @@ while true; do
                 "9.  [UDP] Investigación Profunda (Versiones) | -sU -sV -Pn -p"
                 "10. [WEB] Recon Básica (Enum, Robots, Title) | --script http-enum,http-robots.txt,http-title -p 80,443 -Pn"
                 "11. [WEB] Recon Completo (Vulns Web)         | --script http-vuln-* -p 80,443 -v -Pn"
+                "12. [MANUAL INTERACTIVO] Elige tu mismo      | custom"
                 "b. << Volver al menú principal"
             )
             
@@ -1083,6 +1084,71 @@ while true; do
 
             flags=$(echo "$sub_selection" | awk -F "|" "{print \$2}" | xargs)
 
+            # --- LÓGICA DE ESCANEO CUSTOM CON FZF  ---
+            if [[ "$flags" == "custom" ]]; then
+                # Paso 1: Tipo de Escaneo
+                scan_opts=(
+                    "1. SYN Stealth Scan (Recomendado) | -sS"
+                    "2. TCP Connect Scan (Sin privilegios) | -sT"
+                    "3. UDP Scan (Lento) | -sU"
+                    "4. ACK Scan (Mapeo de Firewall) | -sA"
+                )
+                sel_scan=$(printf "%s\n" "${scan_opts[@]}" | fzf --prompt="🛡️ 1/5 - Selecciona Tipo de Escaneo: " --layout=reverse --height=15% --border)
+                custom_scan=$(echo "$sel_scan" | awk -F "|" '{print $2}' | xargs)
+                [[ -z "$custom_scan" ]] && custom_scan="-sS"
+
+                # Paso 2: Selección de Puertos
+                port_opts=(
+                    "1. Top 100 Puertos Rápidos | -F"
+                    "2. Puertos estándar (Top 1000) | "
+                    "3. Todos los Puertos (65535) | -p-"
+                    "4. Puertos Web + Comunes (80,443,22,21,445,8080) | -p 21,22,80,443,445,8080"
+                )
+                sel_port=$(printf "%s\n" "${port_opts[@]}" | fzf --prompt="🔢 2/5 - Selecciona Rango de Puertos: " --layout=reverse --height=15% --border)
+                custom_port=$(echo "$sel_port" | awk -F "|" '{print $2}' | xargs)
+
+                # Paso 3: Versiones y Scripts (Detección avanzada)
+                script_opts=(
+                    "1. Solo escaneo de puertos (Sin detección) | "
+                    "2. Detectar Versiones de Servicios (-sV) | -sV"
+                    "3. Scripts por Defecto y Versiones (-sC -sV) | -sC -sV"
+                    "4. Analizar Vulnerabilidades Frecuentes (--script vuln) | -sV --script vuln"
+                )
+                sel_script=$(printf "%s\n" "${script_opts[@]}" | fzf --prompt="⚙️ 3/5 - Scripts y Versiones: " --layout=reverse --height=15% --border)
+                custom_script=$(echo "$sel_script" | awk -F "|" '{print $2}' | xargs)
+
+                # Paso 4: Tiempos / Agresividad
+                time_opts=(
+                    "1. T3 (Normal / Evadir alertas simples) | -T3"
+                    "2. T4 (Rápido / Recomendado en entornos controlados) | -T4"
+                    "3. T5 (Muy Agresivo / Puede perder paquetes) | -T5"
+                )
+                sel_time=$(printf "%s\n" "${time_opts[@]}" | fzf --prompt="⚡ 4/5 - Plantilla de Tiempos (Timing): " --layout=reverse --height=15% --border)
+                custom_time=$(echo "$sel_time" | awk -F "|" '{print $2}' | xargs)
+                [[ -z "$custom_time" ]] && custom_time="-T4"
+
+                # Paso 5: Evasión / Optimización (Permite multi-selección con TAB como en Feroxbuster)
+                evasion_opts=(
+                    "-Pn (No realizar ping antes del escaneo)"
+                    "-n (No realizar resolución DNS inversa para agilizar)"
+                    "-v (Incrementar nivel de verbosidad en el log)"
+                    "--open (Mostrar únicamente puertos con estado abierto)"
+                )
+                sel_evasion=$(printf "%s\n" "${evasion_opts[@]}" | fzf -m --prompt="🧩 5/5 - Parámetros extra (TAB=Seleccionar, ENTER=Confirmar): " --layout=reverse --height=20% --border)
+                
+                if [[ -z "$sel_evasion" ]]; then
+                    custom_evasion=""
+                else
+                    # Filtramos solo el flag (lo que está antes del espacio) de cada línea seleccionada
+                    custom_evasion=$(echo "$sel_evasion" | awk '{print $1}' | xargs)
+                fi
+
+                # Unimos todos los flags interactivos seleccionados
+                flags="$custom_scan $custom_port $custom_script $custom_time $custom_evasion"
+                
+                # Limpiamos espacios dobles residuales
+                flags=$(echo "$flags" | tr -s ' ')
+            fi
             if [[ "$flags" == *"-p" ]]; then
                 echo -e -n "${AMARILLO}🔢 Introduce los puertos (ej: 80,443): ${RESET}"
                 read -r ports
@@ -1125,7 +1191,7 @@ while true; do
         continue
     fi
 
-    # --- OPCIONES (WHATWEB, FEROX, WPSCAN) ---
+    # --- OPCIÓN 8 : WHATWEB ---
     if [[ "$selection" == *"Whatweb"* ]]; then
         if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando whatweb...${RESET}"; fi
         echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
@@ -1140,7 +1206,7 @@ while true; do
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
         continue
     fi
-# --- SUBMENÚ FEROXBUSTER (AMPLIADO Y ORDENADO POR CATEGORÍAS) ---
+    # --- SUBMENÚ FEROXBUSTER (AMPLIADO Y ORDENADO POR CATEGORÍAS) ---
     if [[ "$selection" == *"Feroxbuster"* ]]; then
         while true; do
             mostrar_logo
@@ -1283,7 +1349,7 @@ while true; do
         done
         continue
     fi
-    
+    # --- OPCIÓN 10: SUBMENÚ WPSCAN ---
     if [[ "$selection" == *"Wpscan"* ]]; then
         url="$target"
         if [[ ! "$url" =~ ^https?:// ]]; then
@@ -1304,7 +1370,7 @@ while true; do
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
         continue
     fi
-
+    # --- OPCIÓN 11: SUBMENÚ SUBDOMINIOS ---
     if [[ "$selection" == *"subdomains"* ]] || [[ "$selection" == *"Gobuster"* ]]; then
         buscar_subdominios
         continue
