@@ -490,7 +490,7 @@ function mostrar_logo() {
     echo "     ██║  ██║███████╗███████╗      ██║██║ ╚═╝ ██║███████╗"
     echo "     ╚═╝  ╚═╝╚══════╝╚══════╝      ╚═╝╚═╝     ╚═╝╚══════╝"
     echo ""
-    echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░ --[ V 6.2 ]--"
+    echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░ --[ V 6.3 ]--"
     echo -e "${AZUL}--[ Escaneo Interactivo de Red con multiherramientas ]--${RESET}"
     echo -e "${BLANCO}--===============================================================${RESET}"
     echo -e "${BLANCO}--[ Auto-install + Auto-scan + Nuclei + Gobuster + Nmap + ]--${RESET}"
@@ -1140,7 +1140,7 @@ while true; do
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
         continue
     fi
-# --- SUBMENÚ  feroxbuster  ---
+# --- SUBMENÚ feroxbuster (AMPLIADO Y ORDENADO POR CATEGORÍAS) ---
     if [[ "$selection" == *"Feroxbuster"* ]]; then
         while true; do
             mostrar_logo
@@ -1152,21 +1152,25 @@ while true; do
                 continue
             fi
             
-            # --- SUBMENÚ  ---
+            # --- MENÚ COMPLETO: MANTIENE AGRESIVIDAD ORIGINAL Y AÑADE NUEVOS DICCIONARIOS/EXT ---
             sub_options=(
-                "1.  [🔥 AGRESIVO] 100 Hilos, Timeout 3s (Muy rápido / Ruidoso)   | --threads 100 --timeout 3 --no-recursion"
-                "2.  [⚖️  NORMAL] 50 Hilos, Timeout 5s (Equilibrado)              | --threads 50 --timeout 5 --no-recursion"
-                "3.  [🐢 LENTO] 20 Hilos, Timeout 10s, Recursivo (Profundo)      | --threads 20 --timeout 10 --depth 2"
-                "4.  [🥷 SIGILOSO] 1 Hilo, Random Agent, Rate Limit 2/s (Evasión)| --threads 1 --timeout 15 --rate-limit 2 --random-agent --no-recursion"
-                "x.  << Volver al menú principal                                 | back"
+                "1.  [⚡ VELOCIDAD] Perfil AGRESIVO (100 Hilos, No-Recursivo)  | --wordlist $wordlist --extensions bak,zip,txt,sql,old,php.bak --threads 100 --timeout 3 --no-recursion"
+                "2.  [⚡ VELOCIDAD] Perfil NORMAL (50 Hilos, Equilibrado)       | --wordlist $wordlist --extensions bak,zip,txt,sql,old,php.bak --threads 50 --timeout 5 --no-recursion"
+                "3.  [⚡ VELOCIDAD] Perfil LENTO (20 Hilos, Profundo/Recursivo) | --wordlist $wordlist --extensions bak,zip,txt,sql,old,php.bak --threads 20 --timeout 10 --depth 2"
+                "4.  [📁 EXTRA-DICT] Dirbuster Medium + Ext: php,html,js       | --wordlist /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt --extensions php,html,js --threads 50 --no-recursion"
+                "5.  [📁 EXTRA-DICT] Dirbuster Medium (Solo Directorios)       | --wordlist /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt --threads 50 --no-recursion"
+                "6.  [🎯 EXTENSIONES] SecLists Base + Ext: php,html,js         | --wordlist $wordlist --extensions php,html,js --threads 50 --no-recursion"
+                "7.  [🎯 EXTENSIONES] SecLists Base + Ext Avanzadas (Backups)  | --wordlist $wordlist --extensions zip,tar.gz,bak,rar,old,sql,txt --threads 40 --no-recursion"
+                "8.  [🥷 EVASIÓN] Perfil SIGILOSO (1 Hilo, Random Agent, WAF) | --wordlist $wordlist --extensions bak,zip,txt,sql,old,php.bak --threads 1 --timeout 15 --rate-limit 2 --random-agent --no-recursion"
+                "x.  << Volver al menú principal                              | back"
             )
             
-            sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="🌐 Perfiles de Feroxbuster: " --height=22% --layout=reverse --border)
+            sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="🌐 Perfiles Avanzados de Feroxbuster: " --height=25% --layout=reverse --border)
             
             [[ -z "$sub_selection" ]] && break
-            [[ "$sub_selection" == *"Volver"* ]] && break
+            [[ "$sub_selection" == *"Volver"* || "$sub_selection" == *"back"* ]] && break
             
-            # Extraemos los argumentos específicos a la derecha del pipe '|'
+            # Extraemos los argumentos de la derecha del pipe '|'
             profile_args=$(echo "$sub_selection" | awk -F "|" '{print $2}' | xargs)
             
             url="$target"
@@ -1174,38 +1178,34 @@ while true; do
                 url="http://$url"
             fi
 
-            # Sanitizar el target para evitar problemas de carpetas si contiene barras /
             target_safe=$(echo "$target" | tr '/' '_')
             ferox_timestamp=$(date +%H%M%S)
             ferox_txt="$folder/feroxbuster_${target_safe}_${ferox_timestamp}.txt"
             ferox_json="$folder/feroxbuster_${target_safe}_${ferox_timestamp}.json"
 
             if [[ "$txt_status" == "OFF" ]]; then 
-                echo -e "${AMARILLO}⏳ Ejecutando feroxbuster...${RESET}"; 
+                echo -e "${AMARILLO}⏳ Ejecutando feroxbuster...${RESET}"
             fi
             
-            # Guardamos el encabezado inicial en el reporte unificado
             echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
             echo -e "🕒 INICIO feroxbuster: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
             
-            # Convertimos los argumentos dinámicos del perfil seleccionado en un array
+            # Convertimos los argumentos dinámicos elegidos del perfil a un array seguro
             read -r -a custom_args <<< "$profile_args"
             
-            # Argumentos base comunes + argumentos del perfil elegido de manera dinámica
-            cmd_args=("--url" "$url" "--wordlist" "$wordlist" "--extensions" "bak,zip,txt,sql,old,php.bak" "--filter-size" "0" "${custom_args[@]}")
+            # Inyección limpia de comandos (Mantiene la protección contra falsos positivos --filter-size 0)
+            cmd_args=("--url" "$url" "--filter-size" "0" "${custom_args[@]}")
 
             if [[ "$xml_status" == "ON" ]]; then
                 echo -e "🚀 COMANDO: feroxbuster ${cmd_args[*]} --json --output $ferox_json" | output_txt
                 echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
                 
-                # Ejecución nativa en formato JSON (Guarda el archivo completo)
                 $FEROX_BIN "${cmd_args[@]}" --json --output "$ferox_json"
                 
-                # SI EL TXT ESTÁ ACTIVADO: Extraemos los hallazgos del JSON y los guardamos limpios en el TXT unificado
                 if [[ "$txt_status" == "ON" ]] && [ -f "$ferox_json" ]; then
                     {
                         echo ""
-                        echo "🌐 [Resultados extraídos del reporte estructurado JSON]:"
+                        echo "🌐 [Resultados extraídos de Feroxbuster JSON]:"
                         grep '"status"' "$ferox_json" | while read -r line; do
                             status=$(echo "$line" | grep -o '"status":[0-9]*' | cut -d':' -f2)
                             v_url=$(echo "$line" | grep -o '"url":"[^"]*"' | cut -d'"' -f4)
@@ -1218,15 +1218,13 @@ while true; do
                 fi
                 echo -e "\n${VERDE}🌐 Reporte estructurado JSON guardado en: $ferox_json${RESET}"
             else
-                # MODO ESTÁNDAR (XML OFF)
+                # MODO TRADICIONAL (XML OFF)
                 if [[ "$txt_status" == "ON" ]]; then
                     echo -e "🚀 COMANDO: feroxbuster ${cmd_args[*]} --output $ferox_txt" | output_txt
                     echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
                     
-                    # Guarda el txt individual de forma nativa limpia (sin basura de barras de progreso)
                     $FEROX_BIN "${cmd_args[@]}" --output "$ferox_txt"
                     
-                    # Volcamos de forma segura el archivo de texto limpio al log unificado
                     if [ -f "$ferox_txt" ]; then
                         cat "$ferox_txt" >> "$reporte_txt"
                     fi
@@ -1235,14 +1233,13 @@ while true; do
                     echo -e "🚀 COMANDO: feroxbuster ${cmd_args[*]}" | output_txt
                     echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
                     
-                    # Ejecución clásica directa por pantalla sin guardar nada
                     $FEROX_BIN "${cmd_args[@]}"
                 fi
             fi
             
             [[ "$txt_status" == "ON" ]] && echo -e "${VERDE}📄 Log unificado actualizado en: $reporte_txt${RESET}"
             echo ""
-            read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
+            read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al submenú de Feroxbuster...\e[0m'
         done
         continue
     fi
