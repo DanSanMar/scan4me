@@ -490,7 +490,7 @@ function mostrar_logo() {
     echo "     ██║  ██║███████╗███████╗      ██║██║ ╚═╝ ██║███████╗"
     echo "     ╚═╝  ╚═╝╚══════╝╚══════╝      ╚═╝╚═╝     ╚═╝╚══════╝"
     echo ""
-    echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░ --[ V 6.3 ]--"
+    echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░ --[ V 6.4 ]--"
     echo -e "${AZUL}--[ Escaneo Interactivo de Red con multiherramientas ]--${RESET}"
     echo -e "${BLANCO}--===============================================================${RESET}"
     echo -e "${BLANCO}--[ Auto-install + Auto-scan + Nuclei + Gobuster + Nmap + ]--${RESET}"
@@ -531,7 +531,7 @@ function despedida() {
 # Nueva función para manejar el Ctrl+C sin cerrar el script
 function interrupcion() {
     echo -e "\n\n${ROJO}⚠️ Acción cancelada por el usuario.${RESET}"
-    echo -e "${AMARILLO}[!] Espere un momento...${RESET}\n"
+    echo -e "${AMARILLO}[!] Pulse Enter para continuar...${RESET}\n"
     sleep 0.5
     # Al no poner 'exit', Bash continuará con el bucle 'while true' principal
 }
@@ -1140,7 +1140,7 @@ while true; do
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
         continue
     fi
-# --- SUBMENÚ feroxbuster (AMPLIADO Y REORDENADO) ---
+# --- SUBMENÚ FEROXBUSTER (AMPLIADO Y ORDENADO POR CATEGORÍAS) ---
     if [[ "$selection" == *"Feroxbuster"* ]]; then
         while true; do
             mostrar_logo
@@ -1152,10 +1152,9 @@ while true; do
                 continue
             fi
             
-            # --- MENÚ DE PERFILES AVANZADOS DE FEROXBUSTER ---
-            # Determinamos el directorio base de SecLists dinámicamente
             sl_base="${wordlist%/Discovery/Web-Content/common.txt}"
-            
+            [[ -z "$sl_base" || ! -d "$sl_base" ]] && sl_base="/usr/share/seclists"
+
             sub_options=(
                 "1.  [⚡ RÁPIDO] Fuzzing Básico (common.txt)                      | --wordlist $wordlist --threads 50 --no-recursion"
                 "2.  [📁 CLÁSICO CTF] Dirbuster Medium (Solo Directorios)         | --wordlist $sl_base/Discovery/Web-Content/directory-list-2.3-medium.txt --threads 50 --depth 2"
@@ -1163,11 +1162,12 @@ while true; do
                 "4.  [🐧 TECH] Entorno LAMP (Apache / PHP)                        | --wordlist $sl_base/Discovery/Web-Content/directory-list-2.3-medium.txt --extensions php,txt --threads 50 --no-recursion"
                 "5.  [🪟 TECH] Entorno IIS (Windows / ASP)                        | --wordlist $sl_base/Discovery/Web-Content/directory-list-2.3-medium.txt --extensions asp,aspx,config,txt --threads 50 --no-recursion"
                 "6.  [☕ TECH] Entorno Java (Tomcat / Spring)                     | --wordlist $sl_base/Discovery/Web-Content/directory-list-2.3-medium.txt --extensions jsp,do,action --threads 50 --no-recursion"
-                "7.  [⚙️ TECH] Scripts CGI-BIN (Shellshock)                       | --wordlist $wordlist --extensions cgi,sh,pl,py --threads 50 --no-recursion"
-                "8.  [🗄️ ARCHIVOS] Búsqueda de Backups y Configs Ocultas          | --wordlist $sl_base/Discovery/Web-Content/raft-large-files.txt --extensions bak,old,zip,tar.gz,sql,db,swp --threads 50 --no-recursion"
+                "7.  [⚙️  TECH] Scripts CGI-BIN (Shellshock)                       | --wordlist $wordlist --extensions cgi,sh,pl,py --threads 50 --no-recursion"
+                "8.  [🗄️  ARCHIVOS] Búsqueda de Backups y Configs Ocultas          | --wordlist $sl_base/Discovery/Web-Content/raft-large-files.txt --extensions bak,old,zip,tar.gz,sql,db,swp --threads 50 --no-recursion"
                 "9.  [🔌 API] Fuzzing de Endpoints API                            | --wordlist $sl_base/Discovery/Web-Content/api/api-endpoints.txt --threads 50 --no-recursion"
                 "10. [🎯 DICCIONARIO] Raft Large (Directorios Profundos)          | --wordlist $sl_base/Discovery/Web-Content/raft-large-directories.txt --threads 50 --depth 2"
                 "11. [🥷 EVASIÓN] Modo Sigiloso / WAF (Random Agent, 1 Hilo)      | --wordlist $wordlist --extensions php,html,txt --threads 1 --timeout 15 --rate-limit 2 --random-agent --no-recursion"
+                "12. [🛠️  A MEDIDA] Configurar Fuzzing Manualmente...              | custom"
                 "x.  << Volver al menú principal                                  | back"
             )
             
@@ -1176,36 +1176,78 @@ while true; do
             [[ -z "$sub_selection" ]] && break
             [[ "$sub_selection" == *"Volver"* || "$sub_selection" == *"back"* ]] && break
             
-            # Extraemos los argumentos de la derecha del pipe '|'
             profile_args=$(echo "$sub_selection" | awk -F "|" '{print $2}' | xargs)
             
-            url="$target"
-            if [[ ! "$url" =~ ^https?:// ]]; then
-                url="http://$url"
+            # --- LÓGICA DE FUZZING A MEDIDA CON FZF ---
+            if [[ "$profile_args" == "custom" ]]; then
+                dict_medium="/usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt"
+                [[ ! -f "$dict_medium" ]] && dict_medium="$sl_base/Discovery/Web-Content/directory-list-2.3-medium.txt"
+                dict_files="$sl_base/Discovery/Web-Content/raft-large-files.txt"
+                dict_api="$sl_base/Discovery/Web-Content/api/api-endpoints.txt"
+                dict_cgi="$sl_base/Discovery/Web-Content/CGIs.txt"
+
+                dict_opts=(
+                    "1. Básico (common.txt)                   | $wordlist"
+                    "2. Medio (directory-list-2.3-medium.txt) | $dict_medium"
+                    "3. Archivos (raft-large-files.txt)       | $dict_files"
+                    "4. APIs (api-endpoints.txt)              | $dict_api"
+                    "5. Vulnerabilidades (cgis.txt)           | $dict_cgi"
+                )
+                
+                sel_dict=$(printf "%s\n" "${dict_opts[@]}" | fzf --prompt="📖 1/4 - Selecciona Diccionario: " --layout=reverse --height=15% --border)
+                custom_dict=$(echo "$sel_dict" | awk -F "|" '{print $2}' | xargs)
+                [[ -z "$custom_dict" ]] && custom_dict="$wordlist" 
+                          
+                ext_opts=( "php" "html" "txt" "js" "bak" "zip" "tar.gz" "sql" "swp" "asp" "aspx" "config" "jsp" "do" "action" "sh" "cgi" "pl" "py" )
+                sel_ext=$(printf "%s\n" "${ext_opts[@]}" | fzf -m --prompt="🧩 2/4 - Multi-Selección con TAB (ENTER=Aceptar, ESC=Ninguna): " --layout=reverse --height=25% --border)
+                
+                if [[ -z "$sel_ext" ]]; then
+                    custom_ext=""
+                else
+                    ext_joined=$(echo "$sel_ext" | paste -sd "," -)
+                    custom_ext="--extensions $ext_joined"
+                fi
+
+                thread_opts=("10 (Lento/Seguro)" "50 (Equilibrado)" "100 (Agresivo)" "200 (Modo Dios)")
+                sel_threads=$(printf "%s\n" "${thread_opts[@]}" | fzf --prompt="⚡ 3/4 - Selecciona Hilos: " --layout=reverse --height=12% --border)
+                custom_threads=$(echo "$sel_threads" | awk '{print $1}')
+                [[ -z "$custom_threads" ]] && custom_threads="50"
+
+                rec_opts=("No Recursivo (--no-recursion)" "Recursividad Nivel 2 (--depth 2)" "Recursividad Nivel 3 (--depth 3)")
+                sel_rec=$(printf "%s\n" "${rec_opts[@]}" | fzf --prompt="📁 4/4 - Profundidad / Recursividad: " --layout=reverse --height=10% --border)
+                if [[ "$sel_rec" == *"No"* || -z "$sel_rec" ]]; then
+                    custom_rec="--no-recursion"
+                elif [[ "$sel_rec" == *"Nivel 2"* ]]; then
+                    custom_rec="--depth 2"
+                elif [[ "$sel_rec" == *"Nivel 3"* ]]; then
+                    custom_rec="--depth 3"
+                fi
+
+                profile_args="--wordlist $custom_dict --threads $custom_threads $custom_ext $custom_rec"
+                echo -e "\n${VERDE}✅ Configuración generada:${RESET} $profile_args\n"
+                sleep 1
             fi
+            # --- FIN LÓGICA A MEDIDA ---
+
+            url="$target"
+            if [[ ! "$url" =~ ^https?:// ]]; then url="http://$url"; fi
 
             target_safe=$(echo "$target" | tr '/' '_')
             ferox_timestamp=$(date +%H%M%S)
             ferox_txt="$folder/feroxbuster_${target_safe}_${ferox_timestamp}.txt"
             ferox_json="$folder/feroxbuster_${target_safe}_${ferox_timestamp}.json"
 
-            if [[ "$txt_status" == "OFF" ]]; then 
-                echo -e "${AMARILLO}⏳ Ejecutando feroxbuster...${RESET}"
-            fi
+            if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando feroxbuster...${RESET}"; fi
             
             echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
             echo -e "🕒 INICIO feroxbuster: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
             
-            # Convertimos los argumentos dinámicos elegidos del perfil a un array seguro
             read -r -a custom_args <<< "$profile_args"
-            
-            # Inyección limpia de comandos (Mantiene la protección contra falsos positivos --filter-size 0)
             cmd_args=("--url" "$url" "--filter-size" "0" "${custom_args[@]}")
 
             if [[ "$xml_status" == "ON" ]]; then
                 echo -e "🚀 COMANDO: feroxbuster ${cmd_args[*]} --json --output $ferox_json" | output_txt
                 echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
-                
                 $FEROX_BIN "${cmd_args[@]}" --json --output "$ferox_json"
                 
                 if [[ "$txt_status" == "ON" ]] && [ -f "$ferox_json" ]; then
@@ -1215,30 +1257,22 @@ while true; do
                         grep '"status"' "$ferox_json" | while read -r line; do
                             status=$(echo "$line" | grep -o '"status":[0-9]*' | cut -d':' -f2)
                             v_url=$(echo "$line" | grep -o '"url":"[^"]*"' | cut -d'"' -f4)
-                            if [ -n "$v_url" ]; then
-                                echo "   [+] $status - $v_url"
-                            fi
+                            if [ -n "$v_url" ]; then echo "   [+] $status - $v_url"; fi
                         done
                         echo ""
                     } >> "$reporte_txt"
                 fi
                 echo -e "\n${VERDE}🌐 Reporte estructurado JSON guardado en: $ferox_json${RESET}"
             else
-                # MODO TRADICIONAL (XML OFF)
                 if [[ "$txt_status" == "ON" ]]; then
                     echo -e "🚀 COMANDO: feroxbuster ${cmd_args[*]} --output $ferox_txt" | output_txt
                     echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
-                    
                     $FEROX_BIN "${cmd_args[@]}" --output "$ferox_txt"
-                    
-                    if [ -f "$ferox_txt" ]; then
-                        cat "$ferox_txt" >> "$reporte_txt"
-                    fi
+                    if [ -f "$ferox_txt" ]; then cat "$ferox_txt" >> "$reporte_txt"; fi
                     echo -e "\n${VERDE}✅ Resultados individuales limpios en: $ferox_txt${RESET}"
                 else
                     echo -e "🚀 COMANDO: feroxbuster ${cmd_args[*]}" | output_txt
                     echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
-                    
                     $FEROX_BIN "${cmd_args[@]}"
                 fi
             fi
