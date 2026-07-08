@@ -490,12 +490,13 @@ function mostrar_logo() {
     echo "     ██║  ██║███████╗███████╗      ██║██║ ╚═╝ ██║███████╗"
     echo "     ╚═╝  ╚═╝╚══════╝╚══════╝      ╚═╝╚═╝     ╚═╝╚══════╝"
     echo ""
-    echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░ --[ V 6.4 ]--"
+    echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░ --[ V 6.5 ]--"
     echo -e "${AZUL}--[ Escaneo Interactivo de Red con multiherramientas ]--${RESET}"
     echo -e "${BLANCO}--===============================================================${RESET}"
     echo -e "${BLANCO}--[ Auto-install + Auto-scan + Nuclei + Gobuster + Nmap + ]--${RESET}"
     echo -e "${BLANCO}--[ Feroxbuster + SectList + Wpscan + OSINT + scan4windows]--${RESET}"
-    echo ""
+    echo -e "${BLANCO}--[ Nuevas funciones CUSTOM en Nmap y Feroxbuster ]--${RESET}"
+    echo "" 
 }
 
 function output_txt() {
@@ -1084,70 +1085,96 @@ while true; do
 
             flags=$(echo "$sub_selection" | awk -F "|" "{print \$2}" | xargs)
 
-            # --- LÓGICA DE ESCANEO CUSTOM CON FZF  ---
+            # --- LÓGICA DE ESCANEO CUSTOM CON MULTI-SELECCIÓN FZF ---
             if [[ "$flags" == "custom" ]]; then
-                # Paso 1: Tipo de Escaneo
-                scan_opts=(
-                    "1. SYN Stealth Scan (Recomendado) | -sS"
-                    "2. TCP Connect Scan (Sin privilegios) | -sT"
-                    "3. UDP Scan (Lento) | -sU"
-                    "4. ACK Scan (Mapeo de Firewall) | -sA"
+                # Definimos las opciones. El formato es: "Descripción corta | flag de nmap"
+                sub_options=(
+                    # --- FASE 1: DESCUBRIMIENTO Y PUERTOS ---
+                    "1. Desactivar Ping (Asumir Host Vivo)           | -Pn"
+                    "2. Escaneo de todos los puertos (65535)         | -p-"
+                    "3. Escaneo de Puertos Rápidos (Top 100)         | -F"
+                    
+                    # --- FASE 2: TIPO DE ESCANEO ---
+                    "4. Escaneo Sincrónico (TCP Syn Scan)            | -sS"
+                    "5. Escaneo UDP (Puertos comunes)                | -sU"
+                    "6. Escaneo Connect (TCP Connect Scan)           | -sT"
+                    
+                    # --- FASE 3: DETECCIÓN Y RECONOCIMIENTO ---
+                    "7. Detección de Servicios y Versiones           | -sV"
+                    "8. Detección de Sistema Operativo (OS)          | -O"
+                    "9. Escaneo Agresivo (OS, Versión, Rutas)        | -A"
+                    
+                    # --- FASE 4: SCRIPTS DE NMAP (NSE) ---
+                    "10. Scripts de Reconocimiento por Defecto       | -sC"
+                    "11. Escaneo de Vulnerabilidades (Vuln Script)   | --script=vuln"
+                    "12. Buscar Malware/Backdoors comunes            | --script=malware"
+                    "13. Auditoría de Credenciales por Defecto (Auth)| --script=auth"
+                    
+                    # --- FASE 5: CONTROL DE TIEMPOS (TIMING) ---
+                    "14. Modo Sigiloso / Lento (Evitar IDS)          | -T2"
+                    "15. Modo Rápido / Agresivo (Redes Locales)      | -T4"
+                    
+                    # --- FASE 6: EVASIÓN DE FIREWALLS / IDS ---
+                    "16. Evasión: Fragmentar Paquetes                | -f"
+                    "17. Evasión: Cambiar MTU (Data de 24 bytes)     | --mtu 24"
+                    "18. Evasión: Señuelos Falsos (Decoys)           | -D RND:5"
+                    "19. Evasión: Suplantar Puerto de Origen (53)    | --source-port 53"
+                    "20. Evasión: No hacer resolución DNS inversa    | -n"
+                    " Listo! Pulsa [ENTER] para lanzar tu nmap customizado sobre $target"
                 )
-                sel_scan=$(printf "%s\n" "${scan_opts[@]}" | fzf --prompt="🛡️ 1/5 - Selecciona Tipo de Escaneo: " --layout=reverse --height=15% --border)
-                custom_scan=$(echo "$sel_scan" | awk -F "|" '{print $2}' | xargs)
-                [[ -z "$custom_scan" ]] && custom_scan="-sS"
 
-                # Paso 2: Selección de Puertos
-                port_opts=(
-                    "1. Top 100 Puertos Rápidos | -F"
-                    "2. Puertos estándar (Top 1000) | "
-                    "3. Todos los Puertos (65535) | -p-"
-                    "4. Puertos Web + Comunes (80,443,22,21,445,8080) | -p 21,22,80,443,445,8080"
-                )
-                sel_port=$(printf "%s\n" "${port_opts[@]}" | fzf --prompt="🔢 2/5 - Selecciona Rango de Puertos: " --layout=reverse --height=15% --border)
-                custom_port=$(echo "$sel_port" | awk -F "|" '{print $2}' | xargs)
+                # Mostramos el prompt advirtiendo que se puede usar TAB
+                prompt_text="Selecciona opciones con [TAB] y presiona [ENTER] para ejecutar sobre $target: "
 
-                # Paso 3: Versiones y Scripts (Detección avanzada)
-                script_opts=(
-                    "1. Solo escaneo de puertos (Sin detección) | "
-                    "2. Detectar Versiones de Servicios (-sV) | -sV"
-                    "3. Scripts por Defecto y Versiones (-sC -sV) | -sC -sV"
-                    "4. Analizar Vulnerabilidades Frecuentes (--script vuln) | -sV --script vuln"
-                )
-                sel_script=$(printf "%s\n" "${script_opts[@]}" | fzf --prompt="⚙️ 3/5 - Scripts y Versiones: " --layout=reverse --height=15% --border)
-                custom_script=$(echo "$sel_script" | awk -F "|" '{print $2}' | xargs)
+                # Ejecutamos fzf con la opción --multi y la altura adaptada al menú
+                sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="$prompt_text" --height=40% --layout=reverse --border --multi)
 
-                # Paso 4: Tiempos / Agresividad
-                time_opts=(
-                    "1. T3 (Normal / Evadir alertas simples) | -T3"
-                    "2. T4 (Rápido / Recomendado en entornos controlados) | -T4"
-                    "3. T5 (Muy Agresivo / Puede perder paquetes) | -T5"
-                )
-                sel_time=$(printf "%s\n" "${time_opts[@]}" | fzf --prompt="⚡ 4/5 - Plantilla de Tiempos (Timing): " --layout=reverse --height=15% --border)
-                custom_time=$(echo "$sel_time" | awk -F "|" '{print $2}' | xargs)
-                [[ -z "$custom_time" ]] && custom_time="-T4"
+                [[ -z "$sub_selection" ]] && continue
+                [[ "$sub_selection" == *"Volver"* ]] && continue
 
-                # Paso 5: Evasión / Optimización (Permite multi-selección con TAB como en Feroxbuster)
-                evasion_opts=(
-                    "-Pn (No realizar ping antes del escaneo)"
-                    "-n (No realizar resolución DNS inversa para agilizar)"
-                    "-v (Incrementar nivel de verbosidad en el log)"
-                    "--open (Mostrar únicamente puertos con estado abierto)"
-                )
-                sel_evasion=$(printf "%s\n" "${evasion_opts[@]}" | fzf -m --prompt="🧩 5/5 - Parámetros extra (TAB=Seleccionar, ENTER=Confirmar): " --layout=reverse --height=20% --border)
-                
-                if [[ -z "$sel_evasion" ]]; then
-                    custom_evasion=""
-                else
-                    # Filtramos solo el flag (lo que está antes del espacio) de cada línea seleccionada
-                    custom_evasion=$(echo "$sel_evasion" | awk '{print $1}' | xargs)
+                # --- PROCESAMIENTO MULTI-SELECCIÓN ---
+                # Extraemos los flags de todas las líneas seleccionadas y los unimos en una sola línea
+                flags_combinados=$(echo "$sub_selection" | awk -F "|" '{print $2}' | xargs)
+
+                # Si el usuario no seleccionó ningún flag válido, cancelamos de forma segura sin romper el bucle
+                if [[ -z "$flags_combinados" ]]; then
+                    echo -e "${ROJO}❌ No se seleccionó ninguna opción válida.${RESET}"
+                    sleep 2
+                    continue
                 fi
 
-                # Unimos todos los flags interactivos seleccionados
-                flags="$custom_scan $custom_port $custom_script $custom_time $custom_evasion"
+                # Sincronización con el modo de reporte XML global de tu script
+                if [[ "$xml_status" == "ON" ]]; then
+                    current_time=$(date +%H%M%S)
+                    # Creamos la carpeta si no existe y añadimos flags de salida XML requeridos por tu lógica base
+                    mkdir -p "Auditoria_${target}_$(date +%d-%m-%Y)"
+                    local reporte_xml="Auditoria_${target}_$(date +%d-%m-%Y)/nmap_custom_${target}_${current_time}"
+                    cmd_raw="nmap $flags_combinados -oX ${reporte_xml}.xml $target"
+                else
+                    cmd_raw="nmap $flags_combinados $target"
+                fi
+
+                # --- EJECUCIÓN (Lógica original adaptada de scan4me.sh) ---
+                if [[ "$txt_status" == "OFF" ]]; then 
+                    echo -e "${AMARILLO}⏳ Ejecutando Nmap personalizado...${RESET}"
+                fi
+
+                echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
+                echo -e "🕒 INICIO NMAP CUSTOM: $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+                echo -e "🚀 COMANDO: $cmd_raw" | output_txt
+                echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
+
+                # Ejecución del comando combinado redirigiendo flujos
+                eval "$cmd_raw" 2>&1 | output_txt
+
+                if [[ "$xml_status" == "ON" ]]; then
+                    echo -e "\n${VERDE}📊 Reporte XML guardado en: ${reporte_xml}.xml${RESET}"
+                fi
+                [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}📄 Reporte TXT guardado en: $reporte_txt${RESET}"
                 
-                # Limpiamos espacios dobles residuales
-                flags=$(echo "$flags" | tr -s ' ')
+                echo -e "\n${AZUL}--------------------------------------------------${RESET}"
+                read -p "Presiona Enter para continuar..."
+                continue
             fi
             if [[ "$flags" == *"-p" ]]; then
                 echo -e -n "${AMARILLO}🔢 Introduce los puertos (ej: 80,443): ${RESET}"
