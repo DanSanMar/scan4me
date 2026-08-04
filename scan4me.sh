@@ -32,11 +32,16 @@ dependencies=(fzf nmap whatweb feroxbuster wpscan xsltproc host arp-scan smbclie
 get_package_name() {
     local tool=$1
     case "$tool" in
-        "xsltproc") echo "xsltproc" ;;
-        "host") [[ "$GESTOR" == "apt" ]] && echo "dnsutils" || echo "bind-utils" ;;
+        "xsltproc") 
+            [[ "$GESTOR" == "pacman" ]] && echo "libxslt" || echo "xsltproc" ;;
+        "host") 
+            if [[ "$GESTOR" == "apt" ]]; then echo "dnsutils"
+            elif [[ "$GESTOR" == "pacman" ]]; then echo "bind"
+            else echo "bind-utils"; fi ;;
+        "smbclient")
+            [[ "$GESTOR" == "pacman" ]] && echo "samba" || echo "smbclient" ;;
         "feroxbuster") echo "SNAP_REQUIRED" ;;
-        "wpscan") echo "GEM_REQUIRED" ;; # Cambiamos Snap por Ruby Gems
-        "arp-scan") echo "arp-scan" ;;
+        "wpscan") echo "GEM_REQUIRED" ;;
         *) echo "$tool" ;;
     esac
 }
@@ -48,99 +53,180 @@ install_tools() {
     case "$GESTOR" in
         "apt") sudo apt update -y ;;
         "dnf") sudo dnf makecache ;;
-        "pacman") sudo pacman -Sy ;;
+        "pacman") 
+            sudo pacman -Sy --noconfirm
+            # Dependencias base necesarias en Arch para compilar/descomprimir
+            sudo pacman -S --noconfirm ruby ruby-erb base-devel zlib libcurl-gnutls 2>/dev/null || sudo pacman -S --noconfirm ruby base-devel zlib libcurl-gnutls 
+            ;;
         "zypper") sudo zypper refresh ;;
     esac
 
     for tool in "${tools_to_install[@]}"; do
         pkg=$(get_package_name "$tool")
 
+        # --- CASO 1: MANEJO DE GEMAS (WPScan) ---
         if [[ "$pkg" == "GEM_REQUIRED" ]]; then
-            echo -e "\n${AZUL}💎 Instalando $tool y dependencias de compilación para $GESTOR...${RESET}"
-            
+            echo -e "\n${AZUL}💎 Instalando $tool y dependencias para $GESTOR...${RESET}"
             case "$GESTOR" in
-                "apt")
-                    sudo apt update -y
-                    sudo apt install -y ruby-full build-essential zlib1g-dev libcurl4-openssl-dev libcurl4
-                    ;;
-                "dnf")
-                    # Equivalentes exactos para Fedora
-                    sudo dnf install -y ruby ruby-devel gcc gcc-c++ make zlib-devel libcurl-devel openssl-devel
-                    ;;
-                *)
-                    echo -e "${ROJO}⚠️ Gestor no soportado para dependencias Ruby. Intenta instalarlas manualmente.${RESET}"
-                    ;;
+                "apt") sudo apt install -y ruby-full build-essential zlib1g-dev libcurl4-openssl-dev libcurl4 ;;
+                "dnf") sudo dnf install -y ruby ruby-devel gcc gcc-c++ make zlib-devel libcurl-devel openssl-devel ;;
+                "pacman") sudo pacman -S --noconfirm ruby ruby-erb base-devel zlib libcurl-gnutls 2>/dev/null || sudo pacman -S --noconfirm ruby base-devel zlib libcurl-gnutls ;;
             esac
-    
-            sudo ldconfig 2>/dev/null
-            echo -e "${AZUL}⚙️ Instalando gema WPScan...${RESET}"
-            sudo gem install wpscan
+            
+            # Instalamos la gema erb requerida por Ruby 3.4+ junto con wpscan
+            sudo gem install erb wpscan
+            
+            # Enlace simbólico para solucionar el WARNING de PATH en Arch
+            GEM_BIN=$(find /root/.local/share/gem/ruby/ -type f -name wpscan 2>/dev/null | head -n 1)
+            if [ -n "$GEM_BIN" ]; then
+                sudo ln -sf "$GEM_BIN" /usr/local/bin/wpscan
+            fi
             continue
         fi
 
-        if [[ "$pkg" == "SNAP_REQUIRED" ]]; then
+        # --- CASO 2: INSTALACIÓN VÍA GITHUB EXCLUSIVA PARA ARCH LINUX O RUTAS SIN PAQUETE ---
+        if [[ "$GESTOR" == "pacman" ]]; then
+            case "$tool" in
+                "feroxbuster")
+                    echo -e "${AZUL}📥 [Arch] Descargando Feroxbuster desde GitHub...${RESET}"
+                    curl -s https://api.github.com/repos/epi052/feroxbuster/releases/latest \
+                    | grep "browser_download_url.*x86_64-linux-feroxbuster.zip" \
+                    | cut -d : -f 2,3 | tr -d \" \
+                    | wget -qi - -O /tmp/feroxbuster.zip
+                    sudo unzip -o /tmp/feroxbuster.zip feroxbuster -d /usr/local/bin/
+                    sudo chmod +x /usr/local/bin/feroxbuster
+                    rm -f /tmp/feroxbuster.zip
+                    continue
+                    ;;
+                "nuclei")
+                    echo -e "${AZUL}📥 [Arch] Descargando Nuclei desde GitHub...${RESET}"
+                    curl -s https://api.github.com/repos/projectdiscovery/nuclei/releases/latest \
+                    | grep "browser_download_url.*linux_amd64.zip" \
+                    | cut -d : -f 2,3 | tr -d \" \
+                    | wget -qi - -O /tmp/nuclei.zip
+                    sudo unzip -o /tmp/nuclei.zip nuclei -d /usr/local/bin/
+                    sudo chmod +x /usr/local/bin/nuclei
+                    rm -f /tmp/nuclei.zip
+                    sudo /usr/local/bin/nuclei -update-templates
+                    continue
+                    ;;
+                "subfinder")
+                    echo -e "${AZUL}📥 [Arch] Descargando Subfinder desde GitHub...${RESET}"
+                    curl -s https://api.github.com/repos/projectdiscovery/subfinder/releases/latest \
+                    | grep "browser_download_url.*linux_amd64.zip" \
+                    | cut -d : -f 2,3 | tr -d \" \
+                    | wget -qi - -O /tmp/subfinder.zip
+                    sudo unzip -o /tmp/subfinder.zip subfinder -d /usr/local/bin/
+                    sudo chmod +x /usr/local/bin/subfinder
+                    rm -f /tmp/subfinder.zip
+                    continue
+                    ;;
+                "gobuster")
+                    echo -e "${AZUL}📥 [Arch] Descargando Gobuster desde GitHub...${RESET}"
+                    curl -s https://api.github.com/repos/OJ/gobuster/releases/latest \
+                    | grep "browser_download_url.*Linux_x86_64.tar.gz" \
+                    | cut -d : -f 2,3 | tr -d \" \
+                    | wget -qi - -O /tmp/gobuster.tar.gz
+                    sudo tar -xzf /tmp/gobuster.tar.gz -C /usr/local/bin/ gobuster
+                    sudo chmod +x /usr/local/bin/gobuster
+                    rm -f /tmp/gobuster.tar.gz
+                    continue
+                    ;;
+                "whatweb")
+                    echo -e "${AZUL}📥 [Arch] Clonando WhatWeb de GitHub...${RESET}"
+                    [ -d "/opt/whatweb" ] && sudo rm -rf /opt/whatweb
+                    sudo git clone https://github.com/urbanadventurer/WhatWeb.git /opt/whatweb
+                    sudo ln -sf /opt/whatweb/whatweb /usr/local/bin/whatweb
+                    sudo chmod +x /usr/local/bin/whatweb
+                    continue
+                    ;;
+                "sublist3r")
+                    echo -e "${AZUL}📥 [Arch] Clonando Sublist3r de GitHub...${RESET}"
+                    [ -d "/opt/sublist3r" ] && sudo rm -rf /opt/sublist3r
+                    sudo git clone https://github.com/aboul3la/Sublist3r.git /opt/sublist3r
+                    sudo pip install -r /opt/sublist3r/requirements.txt --break-system-packages 2>/dev/null || true
+                    sudo ln -sf /opt/sublist3r/sublist3r.py /usr/local/bin/sublist3r
+                    sudo chmod +x /usr/local/bin/sublist3r
+                    continue
+                    ;;
+                "enum4linux")
+                    echo -e "${AZUL}📥 [Arch] Clonando Enum4linux clásico de GitHub...${RESET}"
+                    [ -d "/opt/enum4linux" ] && sudo rm -rf /opt/enum4linux
+                    sudo git clone https://github.com/CiscoCXSecurity/enum4linux.git /opt/enum4linux
+                    sudo ln -sf /opt/enum4linux/enum4linux.pl /usr/local/bin/enum4linux
+                    sudo chmod +x /usr/local/bin/enum4linux
+                    continue
+                    ;;
 
+                "dnsrecon")
+                    echo -e "${AZUL}📥 [Arch] Clonando Dnsrecon de GitHub...${RESET}"
+                    [ -d "/opt/dnsrecon" ] && sudo rm -rf /opt/dnsrecon
+                    sudo git clone https://github.com/darkoperator/dnsrecon.git /opt/dnsrecon
+                    sudo pip install -r /opt/dnsrecon/requirements.txt --break-system-packages 2>/dev/null || true
+                    sudo ln -sf /opt/dnsrecon/dnsrecon.py /usr/local/bin/dnsrecon
+                    sudo chmod +x /usr/local/bin/dnsrecon
+                    continue
+                    ;;
+
+                "wafw00f")
+                    echo -e "${AZUL}📥 [Arch] Instalando Wafw00f vía Pip...${RESET}"
+                    sudo pip install wafw00f --break-system-packages 2>/dev/null || true
+                    continue
+                    ;;
+            esac
+        fi
+
+        # --- CASO 3: MANEJO DE SNAPS (Para APT / DNF en las otras distros) ---
+        if [[ "$pkg" == "SNAP_REQUIRED" ]]; then
             if ! command -v snap &> /dev/null; then
                 echo -e "\n${AMARILLO}⚠️ $tool requiere Snap, pero no está instalado.${RESET}"
                 echo -ne "${AMARILLO}¿Desea instalar snapd ahora? (s/n): ${RESET}"
                 read -r snap_pref
                 if [[ "$snap_pref" == "s" ]]; then
-                    echo -e "\n${AZUL}📦 Instalando motor de Snap...${RESET}"
                     case "$GESTOR" in
                         "apt") 
                             sudo apt install -y snapd
                             sudo systemctl enable --now snapd.socket
-                            # Enlace simbólico vital en Debian para rutas estándar
                             sudo ln -s /var/lib/snapd/snap /snap 2>/dev/null 
                             ;;
                         "dnf") sudo dnf install -y snapd && sudo systemctl enable --now snapd.socket ;;
                     esac
                     export PATH="$PATH:/snap/bin:/var/lib/snapd/snap/bin"
-                    
                 else
                     echo -e "${ROJO}❌ No se puede instalar $tool por falta de Snap.${RESET}"
                     continue
                 fi
             fi
 
-
             echo -e "${AZUL}📦 Instalando $tool vía Snap...${RESET}"
             local classic=""
             [[ "$tool" == "feroxbuster" || "$tool" == "fzf" ]] && classic="--classic"
             sudo snap install "$tool" $classic
             export PATH=$PATH:/var/lib/snapd/snap/bin
-            
-        else
-            echo -e "${AZUL}📦 Instalando paquete: $pkg...${RESET}"
-            case "$GESTOR" in
-                "apt") 
-                    sudo apt install -y "$pkg" 
-                    # --- Arreglo automático exclusivo para Nuclei ---
-                    if [[ "$tool" == "nuclei" ]]; then
-                        echo -e "${AMARILLO}⚠️ El paquete apt de Kali suele fallar. Forzando instalación binaria oficial...${RESET}"
-                        # Descargar la última versión oficial estable de GitHub para sistemas de 64 bits
-                        curl -s https://api.github.com/repos/projectdiscovery/nuclei/releases/latest \
-                        | grep "browser_download_url.*linux_amd64.zip" \
-                        | cut -d : -f 2,3 \
-                        | tr -d \" \
-                        | wget -qi - -O /tmp/nuclei.zip
-                        
-                        # Descomprimir e instalar directamente en la ruta del sistema
-                        sudo unzip -o /tmp/nuclei.zip -d /usr/bin/ nuclei
-                        sudo chmod +x /usr/bin/nuclei
-                        rm -f /tmp/nuclei.zip
-                        # Inicializar y descargar las plantillas oficiales ---
-                        echo -e "${AZUL}🔄 Descargando plantillas oficiales de Nuclei (Templates)...${RESET}"
-                        sudo nuclei -update-templates
-                    else
-                        sudo apt install -y "$pkg"
-                    fi
-                    ;;
-                "dnf") sudo dnf install -y "$pkg" ;;
-                "pacman") sudo pacman -S --noconfirm "$pkg" ;;
-                "zypper") sudo zypper install -y "$pkg" ;;
-            esac
+            continue
         fi
+
+        # --- CASO 4: INSTALACIÓN NATIVA PARA APT / DNF / ZYPPER ---
+        echo -e "${AZUL}📦 Instalando paquete nativo: $pkg...${RESET}"
+        case "$GESTOR" in
+            "apt") 
+                sudo apt install -y "$pkg" 
+                if [[ "$tool" == "nuclei" ]]; then
+                    echo -e "${AMARILLO}⚠️ Forzando instalación binaria oficial para Nuclei en Kali/Debian...${RESET}"
+                    curl -s https://api.github.com/repos/projectdiscovery/nuclei/releases/latest \
+                    | grep "browser_download_url.*linux_amd64.zip" \
+                    | cut -d : -f 2,3 | tr -d \" \
+                    | wget -qi - -O /tmp/nuclei.zip
+                    sudo unzip -o /tmp/nuclei.zip -d /usr/bin/ nuclei
+                    sudo chmod +x /usr/bin/nuclei
+                    rm -f /tmp/nuclei.zip
+                    sudo nuclei -update-templates
+                fi
+                ;;
+            "dnf") sudo dnf install -y "$pkg" ;;
+            "pacman") sudo pacman -S --noconfirm "$pkg" ;;
+            "zypper") sudo zypper install -y "$pkg" ;;
+        esac
     done
 }
 
