@@ -232,34 +232,65 @@ install_tools() {
 
 mostrar_instrucciones() {
     clear
-    echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}"
-    echo -e "${BLANCO} 📖 GUÍA DE INSTALACIÓN MANUAL PARA TU SISTEMA (${GESTOR^^})${RESET}"
-    echo -e "${AZUL}══════════════════════════════════════════════════${RESET}\n"
+    echo -e "\n${AZUL}══════════════════════════════════════════════════════════════════════${RESET}"
+    echo -e "${BLANCO} 📖 GUÍA DE INSTALACIÓN MANUAL SEGÚN TU SISTEMA (${GESTOR^^})${RESET}"
+    echo -e "${AZUL}══════════════════════════════════════════════════════════════════════${RESET}\n"
 
     for tool in "${missing_tools[@]}"; do
         echo -e "${AMARILLO}🛠  Herramienta: ${BLANCO}$tool${RESET}"
+        
         case "$tool" in
-            "fzf"|"nmap"|"whatweb"|"xsltproc"|"host"|"arp-scan")
-                pkg=$(get_package_name "$tool")
-                echo -e "   ${VERDE}✔ Estándar:${RESET} sudo $GESTOR install -y $pkg"
+            "wpscan")
+                echo -e "   ${VERDE}✔ APT / Debian:${RESET}   sudo apt install -y ruby-full build-essential zlib1g-dev libcurl4-openssl-dev && sudo gem install erb wpscan"
+                echo -e "   ${VERDE}✔ DNF / Fedora:${RESET}   sudo dnf install -y ruby ruby-devel gcc gcc-c++ make zlib-devel libcurl-devel openssl-devel && sudo gem install erb wpscan"
+                echo -e "   ${VERDE}✔ Arch / Pacman:${RESET}  sudo pacman -S --noconfirm ruby base-devel zlib libcurl-gnutls && sudo gem install erb wpscan"
+                echo -e "   ${VERDE}✔ Snap (Alt):${RESET}     sudo snap install wpscan"
                 ;;
             "feroxbuster")
-                echo -e "   ${VERDE}✔ Snap:${RESET}      sudo snap install feroxbuster"
-                echo -e "   ${VERDE}✔ Manual:${RESET}    curl -sL https://raw.githubusercontent.com/epi052/feroxbuster/master/install-nix.sh | bash"
+                echo -e "   ${VERDE}✔ GitHub Binary:${RESET} curl -s https://api.github.com/repos/epi052/feroxbuster/releases/latest | grep \"browser_download_url.*x86_64-linux-feroxbuster.zip\" | cut -d : -f 2,3 | tr -d '\"' | wget -qi - -O /tmp/feroxbuster.zip && sudo unzip -o /tmp/feroxbuster.zip feroxbuster -d /usr/local/bin/"
+                echo -e "   ${VERDE}✔ Snap:${RESET}          sudo snap install feroxbuster --classic"
                 ;;
-            "wpscan")
-                echo -e "   ${VERDE}✔ RubyGem:${RESET}   sudo gem install wpscan"
-                echo -e "   ${VERDE}✔ Snap:${RESET}      sudo snap install wpscan"
+            "nuclei")
+                echo -e "   ${VERDE}✔ GitHub Binary:${RESET} curl -s https://api.github.com/repos/projectdiscovery/nuclei/releases/latest | grep \"browser_download_url.*linux_amd64.zip\" | cut -d : -f 2,3 | tr -d '\"' | wget -qi - -O /tmp/nuclei.zip && sudo unzip -o /tmp/nuclei.zip nuclei -d /usr/local/bin/"
+                ;;
+            "subfinder")
+                echo -e "   ${VERDE}✔ GitHub Binary:${RESET} curl -s https://api.github.com/repos/projectdiscovery/subfinder/releases/latest | grep \"browser_download_url.*linux_amd64.zip\" | cut -d : -f 2,3 | tr -d '\"' | wget -qi - -O /tmp/subfinder.zip && sudo unzip -o /tmp/subfinder.zip subfinder -d /usr/local/bin/"
+                ;;
+            "gobuster")
+                echo -e "   ${VERDE}✔ Estándar:${RESET}      sudo $GESTOR install -y gobuster"
+                echo -e "   ${VERDE}✔ GitHub Binary:${RESET} curl -s https://api.github.com/repos/OJ/gobuster/releases/latest | grep \"browser_download_url.*Linux_x86_64.tar.gz\" | cut -d : -f 2,3 | tr -d '\"' | wget -qi - -O /tmp/gobuster.tar.gz && sudo tar -xzf /tmp/gobuster.tar.gz -C /usr/local/bin/ gobuster"
+                ;;
+            "whatweb")
+                echo -e "   ${VERDE}✔ Estándar:${RESET}      sudo $GESTOR install -y whatweb"
+                echo -e "   ${VERDE}✔ Git Clone:${RESET}     sudo git clone https://github.com/urbanadventurer/WhatWeb.git /opt/whatweb && sudo ln -sf /opt/whatweb/whatweb /usr/local/bin/whatweb"
+                ;;
+            "sublist3r")
+                echo -e "   ${VERDE}✔ Git Clone:${RESET}     sudo git clone https://github.com/aboul3la/Sublist3r.git /opt/sublist3r && sudo pip install -r /opt/sublist3r/requirements.txt --break-system-packages && sudo ln -sf /opt/sublist3r/sublist3r.py /usr/local/bin/sublist3r"
+                ;;
+            "enum4linux")
+                echo -e "   ${VERDE}✔ Estándar:${RESET}      sudo $GESTOR install -y enum4linux"
+                echo -e "   ${VERDE}✔ Git Clone:${RESET}     sudo git clone https://github.com/CiscoCXSecurity/enum4linux.git /opt/enum4linux && sudo ln -sf /opt/enum4linux/enum4linux.pl /usr/local/bin/enum4linux"
+                ;;
+            "dnsrecon")
+                echo -e "   ${VERDE}✔ Estándar:${RESET}      sudo $GESTOR install -y dnsrecon"
+                echo -e "   ${VERDE}✔ Git Clone:${RESET}     sudo git clone https://github.com/darkoperator/dnsrecon.git /opt/dnsrecon && sudo pip install -r /opt/dnsrecon/requirements.txt --break-system-packages && sudo ln -sf /opt/dnsrecon/dnsrecon.py /usr/local/bin/dnsrecon"
+                ;;
+            "wafw00f")
+                echo -e "   ${VERDE}✔ Pip / Estándar:${RESET} sudo pip install wafw00f --break-system-packages || sudo $GESTOR install -y wafw00f"
+                ;;
+            *)
+                pkg=$(get_package_name "$tool")
+                echo -e "   ${VERDE}✔ Paquete Nativo:${RESET} sudo $GESTOR install -y $pkg"
                 ;;
         esac
-        echo -e "${AZUL}--------------------------------------------------${RESET}"
+        echo -e "${AZUL}----------------------------------------------------------------------${RESET}"
     done
     
-    if [ ! -f "$wordlist_standard" ] && [ ! -f "$wordlist_snap" ]; then
+    if [ ! -f "$wordlist_standard" ] && [ ! -f "$wordlist_snap" ] && [ ! -f "$wordlist_user" ]; then
         echo -e "${AMARILLO}📚 Diccionario: SecLists${RESET}"
-        echo -e "   ${VERDE}✔ Git (Recomendado):${RESET} sudo git clone --depth 1 https://github.com/danielmiessler/SecLists /usr/share/seclists"
-        echo -e "   ${VERDE}✔ APT (Kali/Debian):${RESET} sudo apt install seclists"
-        echo -e "${AZUL}--------------------------------------------------${RESET}"
+        echo -e "   ${VERDE}✔ Git (Recomendado):${RESET} git clone --depth 1 https://github.com/danielmiessler/SecLists ~/seclists"
+        echo -e "   ${VERDE}✔ APT (Kali/Debian):${RESET} sudo apt install -y seclists"
+        echo -e "${AZUL}----------------------------------------------------------------------${RESET}"
     fi
 }
 
@@ -576,7 +607,7 @@ function mostrar_logo() {
     echo "     ██║  ██║███████╗███████╗      ██║██║ ╚═╝ ██║███████╗"
     echo "     ╚═╝  ╚═╝╚══════╝╚══════╝      ╚═╝╚═╝     ╚═╝╚══════╝"
     echo ""
-    echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░ --[ V 6.5 ]--"
+    echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░ --[ V 6.6 arch ]--"
     echo -e "${AZUL}--[ Escaneo Interactivo de Red con multiherramientas ]--${RESET}"
     echo -e "${BLANCO}--===============================================================${RESET}"
     echo -e "${BLANCO}--[ Auto-install + Auto-scan + Nuclei + Gobuster + Nmap + ]--${RESET}"
