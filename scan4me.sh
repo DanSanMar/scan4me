@@ -302,9 +302,9 @@ function buscar_subdominios() {
         return
     fi
 
-    # 2. Comprobar si el target es una IP pura. Si es una IP, no se pueden buscar subdominios.
+    # 2. Comprobar si el target es una IP pura
     if [[ "$target" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-        echo -e "${ROJO}❌ Error: La búsqueda de subdominios requiere un DOMINIO (ej: otonesmiguelanez.com), actualmente tienes una IP asignada (${target}).${RESET}"
+        echo -e "${ROJO}❌ Error: La búsqueda de subdominios requiere un DOMINIO (ej: elrincondelhacker.es), actualmente tienes una IP asignada (${target}).${RESET}"
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver... \e[0m'
         return
     fi
@@ -316,27 +316,31 @@ function buscar_subdominios() {
         return
     fi
 
-    # --- LIMPIEZA TOTAL Y SEGURA ---
-    local dominio_limpio="${target#*://}" # Quita http:// o https:// si los hubiera
+    # --- LIMPIEZA DEL DOMINIO ---
+    local dominio_limpio="${target#*://}" # Quita http:// o https://
     dominio_limpio="${dominio_limpio#www.}"       # Quita www.
     dominio_limpio="${dominio_limpio%/}"          # Quita / al final
-    dominio_limpio=$(echo "$dominio_limpio" | tr -d '[:space:]') # Quita espacios invisibles
+    dominio_limpio=$(echo "$dominio_limpio" | tr -d '[:space:]')
 
-    # --- CORRECCIÓN DE DICCIONARIO PARA DNS ---
-    # Intentamos saltar de Web-Content a Discovery/DNS de SecLists automáticamente
-    local sub_wordlist="${wordlist%/*/*}/Discovery/DNS/subdomains-top1million-5000.txt"
-    if [ ! -f "$sub_wordlist" ]; then
+    # --- BÚSQUEDA DINÁMICA DEL DICCIONARIO DNS ---
+    # Busca en Discovery/DNS cualquier diccionario de subdominios relevante
+    local base_sl="${wordlist%/Discovery/Web-Content/*}"
+    local sub_wordlist
+    sub_wordlist=$(find "$base_sl/Discovery/DNS" -type f -iname "*subdomains*" 2>/dev/null | head -n 1)
+
+    # Fallback si no encuentra un diccionario específico de DNS
+    if [ -z "$sub_wordlist" ] || [ ! -f "$sub_wordlist" ]; then
         sub_wordlist="$wordlist" 
     fi
 
-    if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando GoBuster DNS...${RESET}"; fi
+    if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando GoBuster DNS (Ajustado a 20 hilos + Resolver 1.1.1.1)...${RESET}"; fi
     echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
     echo -e "🕒 INICIO SUBDOMINIOS (GoBuster): $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
-    echo -e "🚀 COMANDO: gobuster dns --domain=${dominio_limpio} -w ${sub_wordlist} -t 50" | output_txt
+    echo -e "🚀 COMANDO: gobuster dns --domain=${dominio_limpio} -w ${sub_wordlist} -t 20 --resolver 1.1.1.1" | output_txt
     echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
 
-    # Ejecución definitiva
-    gobuster dns --domain="${dominio_limpio}" -w "${sub_wordlist}" -t 50 | output_txt
+    # Ejecución con 20 hilos y DNS resolver de Cloudflare para prevenir i/o timeouts
+    gobuster dns --domain="${dominio_limpio}" -w "${sub_wordlist}" -t 20 --resolver 1.1.1.1 | output_txt
 
     [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}✅ Resultados en: $reporte_txt${RESET}"
     echo ""
