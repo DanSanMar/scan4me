@@ -295,56 +295,79 @@ mostrar_instrucciones() {
 }
 
 function buscar_subdominios() {
-    # 1. Comprobar si el target está vacío
+    # 1. Validación de objetivo
     if [ -z "$target" ]; then
         echo -e "${ROJO}❌ Error: No se ha seleccionado ningún objetivo.${RESET}"
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver... \e[0m'
         return
     fi
 
-    # 2. Comprobar si el target es una IP pura
     if [[ "$target" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-        echo -e "${ROJO}❌ Error: La búsqueda de subdominios requiere un DOMINIO (ej: elrincondelhacker.es), actualmente tienes una IP asignada (${target}).${RESET}"
+        echo -e "${ROJO}❌ Error: La búsqueda de subdominios requiere un DOMINIO (ej: victima.htb), actualmente tienes una IP (${target}).${RESET}"
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver... \e[0m'
         return
     fi
 
-    # 3. Comprobar diccionario
     if [ -z "$wordlist" ]; then
         echo -e "${ROJO}❌ Error: Se requiere SecLists para esta función.${RESET}"
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver... \e[0m'
         return
     fi
 
-    # --- LIMPIEZA DEL DOMINIO ---
-    local dominio_limpio="${target#*://}" # Quita http:// o https://
-    dominio_limpio="${dominio_limpio#www.}"       # Quita www.
-    dominio_limpio="${dominio_limpio%/}"          # Quita / al final
+    # 2. Extraer dominio raíz de forma estricta (ej: blog.dominio.com -> dominio.com)
+    local dominio_limpio="${target#*://}"
+    dominio_limpio="${dominio_limpio%/}"
     dominio_limpio=$(echo "$dominio_limpio" | tr -d '[:space:]')
 
-    # --- BÚSQUEDA DINÁMICA DEL DICCIONARIO DNS ---
-    # Busca en Discovery/DNS cualquier diccionario de subdominios relevante
+    local partes_dominio
+    partes_dominio=$(echo "$dominio_limpio" | awk -F'.' '{if (NF>2) print $(NF-1)"."$NF; else print $0}')
+    if [ -n "$partes_dominio" ]; then
+        dominio_limpio="$partes_dominio"
+    fi
+
+    # 3. Localizar el diccionario de DNS dinámicamente en SecLists
     local base_sl="${wordlist%/Discovery/Web-Content/*}"
     local sub_wordlist
     sub_wordlist=$(find "$base_sl/Discovery/DNS" -type f -iname "*subdomains*" 2>/dev/null | head -n 1)
 
-    # Fallback si no encuentra un diccionario específico de DNS
     if [ -z "$sub_wordlist" ] || [ ! -f "$sub_wordlist" ]; then
         sub_wordlist="$wordlist" 
     fi
 
-    if [[ "$txt_status" == "OFF" ]]; then echo -e "${AMARILLO}⏳ Ejecutando GoBuster DNS (Ajustado a 20 hilos + Resolver 1.1.1.1)...${RESET}"; fi
-    echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
-    echo -e "🕒 INICIO SUBDOMINIOS (GoBuster): $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
-    echo -e "🚀 COMANDO: gobuster dns --domain=${dominio_limpio} -w ${sub_wordlist} -t 20 --resolver 1.1.1.1" | output_txt
-    echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
+    # 4. Submenú interactivo de selección de perfil CTF
+    while true; do
+        mostrar_logo
+        echo -e "${VERDE}🎯 Dominio objetivo (Raíz): ${BLANCO}$dominio_limpio${RESET}\n"
 
-    # Ejecución con 20 hilos y DNS resolver de Cloudflare para prevenir i/o timeouts
-    gobuster dns --domain="${dominio_limpio}" -w "${sub_wordlist}" -t 20 --resolver 1.1.1.1 | output_txt
+        sub_options=(
+            "1.  [⚡ RÁPIDO CTF] Estándar UDP (50 Hilos, DNS 1.1.1.1)            | -t 50 --resolver 1.1.1.1 --timeout 2s --ne"
+            "2.  [🛡️ SEGURO / SIN TIMEOUTS] Protocolo TCP (20 Hilos)             | -t 20 --resolver 1.1.1.1 --protocol tcp --timeout 3s --ne"
+            "3.  [🥷 EVASIÓN / WAF] Con Retraso (5 Hilos + 100ms delay)         | -t 5 --delay 100ms --resolver 1.1.1.1 --timeout 4s --ne"
+            "x.  << Volver al menú principal                                     | back"
+        )
 
-    [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}✅ Resultados en: $reporte_txt${RESET}"
-    echo ""
-    read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
+        sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="🔍 Elige perfil de escaneo DNS: " --height=20% --layout=reverse --border)
+
+        [[ -z "$sub_selection" ]] && break
+        [[ "$sub_selection" == *"Volver"* || "$sub_selection" == *"back"* ]] && break
+
+        flags_gobuster=$(echo "$sub_selection" | awk -F "|" '{print $2}' | xargs)
+
+        if [[ "$txt_status" == "OFF" ]]; then 
+            echo -e "${AMARILLO}⏳ Ejecutando GoBuster DNS en ${dominio_limpio}...${RESET}"
+        fi
+
+        echo -e "\n${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
+        echo -e "🕒 INICIO SUBDOMINIOS (GoBuster): $(date '+%d-%m-%Y %H:%M:%S')" | output_txt
+        echo -e "🚀 COMANDO: gobuster dns --domain=${dominio_limpio} -w ${sub_wordlist} ${flags_gobuster}" | output_txt
+        echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}\n" | output_txt
+
+        gobuster dns --domain="${dominio_limpio}" -w "${sub_wordlist}" ${flags_gobuster} | output_txt
+
+        [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}✅ Resultados guardados en: $reporte_txt${RESET}"
+        echo ""
+        read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al submenú DNS...\e[0m'
+    done
 }
 # Busca un diccionario de forma flexible usando un patrón (para opciones 1-11)
 function obtener_diccionario_dinamico() {
@@ -645,7 +668,7 @@ function mostrar_logo() {
     echo "     ██║  ██║███████╗███████╗      ██║██║ ╚═╝ ██║███████╗"
     echo "     ╚═╝  ╚═╝╚══════╝╚══════╝      ╚═╝╚═╝     ╚═╝╚══════╝"
     echo ""
-    echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░ --[ V 6.8 arch-seclist ]--"
+    echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░ --[ V 6.9 ]--"
     echo -e "${AZUL}--[ Escaneo Interactivo de Red con multiherramientas ]--${RESET}"
     echo -e "${BLANCO}--===============================================================${RESET}"
     echo -e "${BLANCO}--[ Auto-install + Auto-scan + Nuclei + Gobuster + Nmap + ]--${RESET}"
