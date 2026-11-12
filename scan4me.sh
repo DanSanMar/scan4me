@@ -364,6 +364,7 @@ function buscar_subdominios() {
 
         gobuster dns --domain="${dominio_limpio}" -w "${sub_wordlist}" ${flags_gobuster} | output_txt
 
+        _abortar_si_interrumpido && continue
         [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}✅ Resultados guardados en: $reporte_txt${RESET}"
         echo ""
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al submenú DNS...\e[0m'
@@ -773,6 +774,8 @@ _logo_fzf() {
 
 function mostrar_logo() {
     clear
+    # Cada redibujado del menú empieza sin interrupción pendiente
+    _INTERRUMPIDO=0
 
     local version="7.0"
 
@@ -902,26 +905,40 @@ function despedida() {
         --prompt="⚠️ ¿Seguro que deseas salir del script? " \
         --height=10% --layout=reverse --border)
 
-    # Si elige "Sí" o si vuelve a pulsar Ctrl+C/ESC en esta pantalla, el script se cierra de verdad
-    if [[ "$confirmar" == *"Sí"* || -z "$confirmar" ]]; then
+    # Solo se sale si se elige "Sí"; "No" o Ctrl+C/ESC cancelan la salida
+    if [[ "$confirmar" == *"Sí"* ]]; then
         echo -e "\n"
         echo -e "${AZUL}%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%${RESET}"
         echo -e "${BLANCO}     ¡Gracias por usar scan4me! Bye!      ${RESET}"
         echo -e "${AZUL}%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%${RESET}"
         exit 0
     else
-        # Si elige "No", simplemente limpiamos la pantalla actual y no hacemos 'exit'.
         # Al no hacer exit, el flujo del script continuará en el menú donde lo dejaste.
         clear
     fi
 }
 
+# Bandera global: marca que el usuario interrumpió la acción en curso
+_INTERRUMPIDO=0
+
 # Nueva función para manejar el Ctrl+C sin cerrar el script
 function interrupcion() {
-    echo -e "\n\n${ROJO}⚠️ Acción cancelada por el usuario.${RESET}"
-    echo -e "${AMARILLO}[!] Pulse Enter para continuar...${RESET}\n"
-    sleep 0.5
+    _INTERRUMPIDO=1
+    # Se escribe en /dev/tty para no contaminar las capturas de fzf
+    if [[ -w /dev/tty ]]; then
+        printf '\n%b⚠️ Acción cancelada por el usuario.%b\n' "$ROJO" "$RESET" > /dev/tty
+    fi
     # Al no poner 'exit', Bash continuará con el bucle 'while true' principal
+}
+
+# Devuelve 0 si la acción en curso fue interrumpida con Ctrl+C
+_interrumpido() {
+    [[ "${_INTERRUMPIDO:-0}" == "1" ]]
+}
+
+# Devuelve 0 si hay que cortar la acción en curso (el aviso ya lo muestra el trap)
+_abortar_si_interrumpido() {
+    _interrumpido
 }
 
 # Asignamos la interrupción al SIGINT (Ctrl+C)
@@ -1224,12 +1241,14 @@ while true; do
 
     selection=$(printf "%s\n" "${options[@]}" | _logo_fzf --prompt="🔍 Selecciona el tipo de acción: " --height=18% --layout=reverse --border)
     
+    # Ctrl+C / ESC cancelan la selección y redibujan el menú (no salen)
     if [ -z "$selection" ]; then
-        despedida
+        continue
     fi
     
     if [[ "$selection" == *"SALIR"* ]]; then
         despedida
+        continue
     fi
 
     if [[ "$selection" == *"[CAMBIAR MODO CONFIG XML]"* ]]; then
@@ -1257,6 +1276,7 @@ while true; do
         cat /tmp/scan4me_fase1.txt | output_txt
         open_ports=$(grep "/tcp" /tmp/scan4me_fase1.txt | cut -d/ -f1 | xargs | tr ' ' ',')
         rm -f /tmp/scan4me_fase1.txt
+        _abortar_si_interrumpido && continue
         
         if [ -z "$open_ports" ]; then
             echo -e "\n${ROJO}❌ No se encontraron puertos abiertos con tasas agresivas.${RESET}" | output_txt
@@ -1273,6 +1293,7 @@ while true; do
             cat /tmp/scan4me_sigilo.txt | output_txt
             open_ports=$(grep "/tcp" /tmp/scan4me_sigilo.txt | cut -d/ -f1 | xargs | tr ' ' ',')
             rm -f /tmp/scan4me_sigilo.txt
+            _abortar_si_interrumpido && continue
             
             if [ -z "$open_ports" ]; then
                 echo -e "\n${ROJO}❌ No se detectaron servicios activos. El host podría estar blindado o caído.${RESET}" | output_txt
@@ -1303,6 +1324,7 @@ while true; do
             echo -e "🚀 COMANDO: nmap -sSCV -Pn -n -p $open_ports $target" | output_txt
             nmap -sSCV -Pn -n -p "$open_ports" "$target" | output_txt
         fi
+        _abortar_si_interrumpido && continue
 
         # --- FASE 3: AUDITORÍA DETALLADA DE VULNERABILIDADES (NSE) ---
         echo -e "\n${AZUL}🚀 [Fase 3] Corriendo batería de scripts NSE orientados a vulnerabilidades conocidas...${RESET}"
@@ -1317,6 +1339,7 @@ while true; do
             echo -e "🚀 COMANDO: nmap --script vuln -Pn -n --script-args=unsafe=1 -p $open_ports $target" | output_txt
             nmap --script vuln -Pn -n --script-args=unsafe=1 -p "$open_ports" "$target" | output_txt
         fi
+        _abortar_si_interrumpido && continue
 
         # --- FASE 4: ANÁLISIS WEB INTELIGENTE ---
         if echo "$open_ports" | grep -qE "(^|,)(80|443|8080|8443)(,|$)"; then
@@ -1336,6 +1359,7 @@ while true; do
                 whatweb -a 1 -t 1 -v --no-errors "$target" | output_txt
             fi
             echo -e "${MAGENTA}══════════════════════════════════════════════════${RESET}" | output_txt
+            _abortar_si_interrumpido && continue
             if [ -n "$wordlist" ] && [ -f "$wordlist" ]; then
                 echo -e "\n${AZUL}🔍 Lanzando Fuzzing Web Estructurado con Gobuster...${RESET}"
                 echo -e "\n${AZUL}══════════════════════════════════════════════════${RESET}" | output_txt
@@ -1355,11 +1379,13 @@ while true; do
         else
             echo -e "\n${AMARILLO}⏳ Saltando Fase Web: Los puertos HTTP/HTTPS estándar están cerrados.${RESET}" | output_txt
         fi
+        _abortar_si_interrumpido && continue
 
         # --- PROCESADO DE WRITEUPS E INFORME FINAL ---
         if [[ "$xml_status" == "ON" ]]; then
             # LLamada segura a tu función de generación de reportes Markdown/HTML/IA
             procesar_reportes
+            _abortar_si_interrumpido && continue
 
             echo -e "${AZUL}--------------------------------------------------${RESET}"
             echo -e "${VERDE}✅ Estructuras de reportes dinámicos procesadas con éxito en: $folder${RESET}"
@@ -1368,10 +1394,14 @@ while true; do
             read -n 1 -s -r -p $'\e[1;32m🚀 Para aplicar limpieza automática de logs RAW y dejar solo los Writeups refinados pulsa: Enter\e[0m'
 
             # Limpieza higiénica selectiva solo si el usuario decide continuar con Enter
-            rm -f "${archivo_fase2}.xml" "${archivo_fase2}.nmap" "${archivo_fase2}.gnmap"
-            rm -f "${archivo_fase3}.xml" "${archivo_fase3}.nmap" "${archivo_fase3}.gnmap"
-            rm -f "${archivo_fase4}.txt"
-            rm -f "${archivo_whatweb}.txt"
+            if _interrumpido; then
+                echo -e "\n${VERDE}📌 Volcados RAW conservados.${RESET}"
+            else
+                rm -f "${archivo_fase2}.xml" "${archivo_fase2}.nmap" "${archivo_fase2}.gnmap"
+                rm -f "${archivo_fase3}.xml" "${archivo_fase3}.nmap" "${archivo_fase3}.gnmap"
+                rm -f "${archivo_fase4}.txt"
+                rm -f "${archivo_whatweb}.txt"
+            fi
         fi
 
         echo -e "\n${VERDE}🏁 Proceso de Auditoría Automática Completado.${RESET}"
@@ -1420,10 +1450,8 @@ while true; do
 
             sub_selection=$(printf "%s\n" "${sub_options[@]}" | _logo_fzf --prompt="☢️ Perfiles de Nuclei: " --height=25% --layout=reverse --border)
 
-            # Control de salida rápido con un solo Ctrl+C o ESC
-            if [ -z "$sub_selection" ]; then
-                despedida
-            fi
+            # Ctrl+C / ESC cancelan el menú y vuelven al menú principal
+            [[ -z "$sub_selection" ]] && break
 
             # Control voluntario para volver atrás
             if [[ "$sub_selection" == *"Volver"* || "$sub_selection" == *"back"* ]]; then
@@ -1465,6 +1493,9 @@ while true; do
 
             # Ejecutamos el comando de forma segura
             eval "$cmd_raw" 2>&1 | output_txt
+
+            # Si se canceló con Ctrl+C, no procesamos reportes ni pedimos Enter
+            _abortar_si_interrumpido && continue
 
             # Avisos de finalización y guardado
             if [[ "$xml_status" == "ON" && ! "$sub_selection" == *"Actualizar"* ]]; then
@@ -1596,6 +1627,7 @@ while true; do
                 # Ejecución del comando combinado redirigiendo flujos
                 eval "$cmd_raw" 2>&1 | output_txt
 
+                _abortar_si_interrumpido && continue
                 if [[ "$xml_status" == "ON" ]]; then
                     echo -e "\n${VERDE}📊 Reporte XML guardado en: ${reporte_xml}.xml${RESET}"
                 fi
@@ -1636,6 +1668,7 @@ while true; do
                 nmap $flags "$target" | output_txt
             fi
         
+            _abortar_si_interrumpido && continue
             [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}📄 Reporte guardado en: $reporte_txt${RESET}"
             echo -e "\n${AZUL}--------------------------------------------------${RESET}"
             echo -e "${VERDE}✅ Escaneo finalizado.${RESET}"
@@ -1657,6 +1690,7 @@ while true; do
 
         whatweb -a 1 -t 1 -v --no-errors --open-timeout=5 --read-timeout=5 "$target" | output_txt
         
+        _abortar_si_interrumpido && continue
         [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}✅ Resultados en: $reporte_txt${RESET}"
         echo ""
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
@@ -1717,9 +1751,16 @@ while true; do
             if [[ "$profile_args" == "custom" ]]; then
                 echo -e "${AZUL}🔍 1/4 - Selecciona cualquier diccionario con fzf...${RESET}"
                 custom_dict=$(seleccionar_diccionario_fzf)
+                dict_rc=$?
+
+                # ESC / Ctrl+C cancelan toda la configuración manual
+                if (( dict_rc == 130 )); then
+                    echo -e "${AMARILLO}⚠️ Configuración cancelada.${RESET}"
+                    continue
+                fi
 
                 if [ -z "$custom_dict" ]; then
-                    echo -e "${AMARILLO}⚠️ Selección cancelada. Usando diccionario por defecto ($wordlist).${RESET}"
+                    echo -e "${AMARILLO}⚠️ No se encontró diccionario. Usando el global ($wordlist).${RESET}"
                     custom_dict="$wordlist"
                 else
                     echo -e "${VERDE}✅ Diccionario seleccionado:${RESET} $custom_dict"
@@ -1727,6 +1768,11 @@ while true; do
                           
                 ext_opts=( "php" "html" "txt" "js" "bak" "zip" "tar.gz" "sql" "swp" "asp" "aspx" "config" "jsp" "do" "action" "sh" "cgi" "pl" "py" )
                 sel_ext=$(printf "%s\n" "${ext_opts[@]}" | _logo_fzf -m --prompt="🧩 2/4 - Multi-Selección de extensiones con TAB (ENTER=Aceptar): " --layout=reverse --height=25% --border)
+                ext_rc=$?
+                if (( ext_rc == 130 )); then
+                    echo -e "${AMARILLO}⚠️ Configuración cancelada.${RESET}"
+                    continue
+                fi
                 
                 if [[ -z "$sel_ext" ]]; then 
                     custom_ext=""
@@ -1736,11 +1782,21 @@ while true; do
 
                 thread_opts=("10 (Lento/Seguro)" "50 (Equilibrado)" "100 (Agresivo)" "200 (Modo Dios)")
                 sel_threads=$(printf "%s\n" "${thread_opts[@]}" | _logo_fzf --prompt="⚡ 3/4 - Selecciona Hilos: " --layout=reverse --height=12% --border)
+                threads_rc=$?
+                if (( threads_rc == 130 )); then
+                    echo -e "${AMARILLO}⚠️ Configuración cancelada.${RESET}"
+                    continue
+                fi
                 custom_threads=$(echo "$sel_threads" | awk '{print $1}')
                 [[ -z "$custom_threads" ]] && custom_threads="50"
 
                 rec_opts=("No Recursivo (--no-recursion)" "Recursividad Nivel 2 (--depth 2)" "Recursividad Nivel 3 (--depth 3)")
                 sel_rec=$(printf "%s\n" "${rec_opts[@]}" | _logo_fzf --prompt="📁 4/4 - Profundidad / Recursividad: " --layout=reverse --height=10% --border)
+                rec_rc=$?
+                if (( rec_rc == 130 )); then
+                    echo -e "${AMARILLO}⚠️ Configuración cancelada.${RESET}"
+                    continue
+                fi
                 if [[ "$sel_rec" == *"No"* || -z "$sel_rec" ]]; then 
                     custom_rec="--no-recursion"
                 elif [[ "$sel_rec" == *"Nivel 2"* ]]; then 
@@ -1786,6 +1842,7 @@ while true; do
                 fi
             fi
             
+            _abortar_si_interrumpido && continue
             [[ "$txt_status" == "ON" ]] && echo -e "${VERDE}📄 Log unificado actualizado en: $reporte_txt${RESET}"
             echo ""
             read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al submenú de Feroxbuster...\e[0m'
@@ -1809,6 +1866,7 @@ while true; do
 
         $WPSCAN_BIN --url $url$subdominio -e u,ap --detection-mode aggressive --force | output_txt
         
+        _abortar_si_interrumpido && continue
         [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}✅ Resultados en: $reporte_txt${RESET}"
         echo ""   
         read -n 1 -s -r -p $'\e[1;5;32mPulsa cualquier tecla para volver al menú...\e[0m'
@@ -1879,6 +1937,7 @@ while true; do
                 fi
             fi
 
+            _abortar_si_interrumpido && continue
             [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}📄 Reporte guardado en: $reporte_txt${RESET}"
             echo -e "\n${AZUL}--------------------------------------------------${RESET}"
             echo -e "${VERDE}✅ Escaneo de Windows finalizado.${RESET}"
@@ -1956,6 +2015,7 @@ while true; do
             # Usamos eval para ejecutar el comando crudo
             eval "$cmd_raw" 2>&1 | output_txt
 
+            _abortar_si_interrumpido && continue
             [[ "$txt_status" == "ON" ]] && echo -e "\n${VERDE}📄 Reporte guardado en: $reporte_txt${RESET}"
             echo -e "\n${AZUL}--------------------------------------------------${RESET}"
             echo -e "${VERDE}✅ Reconocimiento finalizado.${RESET}"
