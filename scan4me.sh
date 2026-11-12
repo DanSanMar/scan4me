@@ -346,7 +346,7 @@ function buscar_subdominios() {
             "x.  << Volver al menú principal                                     | back"
         )
 
-        sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="🔍 Elige perfil de escaneo DNS: " --height=20% --layout=reverse --border)
+        sub_selection=$(printf "%s\n" "${sub_options[@]}" | _logo_fzf --prompt="🔍 Elige perfil de escaneo DNS: " --height=20% --layout=reverse --border)
 
         [[ -z "$sub_selection" ]] && break
         [[ "$sub_selection" == *"Volver"* || "$sub_selection" == *"back"* ]] && break
@@ -656,25 +656,234 @@ xml_status="OFF"
 txt_status="OFF"
 
 # --- FUNCIÓN LOGO ---
+# Paleta 256 colores para el degradado del encabezado
+_LOGO_ACCENTS=(
+    $'\033[1;38;5;45m'
+    $'\033[1;38;5;51m'
+    $'\033[1;38;5;87m'
+    $'\033[1;38;5;123m'
+    $'\033[1;38;5;159m'
+    $'\033[1;38;5;214m'
+    $'\033[1;38;5;208m'
+    $'\033[1;38;5;203m'
+    $'\033[1;38;5;198m'
+    $'\033[1;38;5;171m'
+    $'\033[1;38;5;105m'
+    $'\033[1;38;5;69m'
+)
+
+# Ajusta un texto al ancho indicado sin romper la caja (recorte por caracteres)
+_logo_fit() {
+    local text="$1" width="$2"
+    # Evita que un target con caracteres de control rompa la caja
+    text=${text//$'\e'/}
+    text=${text//$'\n'/ }
+    text=${text//$'\r'/ }
+    text=${text//$'\t'/ }
+    if (( ${#text} > width )); then
+        printf '%s…' "${text:0:width-1}"
+    else
+        printf '%s' "$text"
+    fi
+}
+
+# Devuelve el texto rellenado a un ancho fijo y coloreado después del padding
+# (los códigos ANSI no cuentan para el ancho visual)
+_logo_cell() {
+    local text="$1" width="$2" color="$3"
+    local fitted padding spaces
+    fitted=$(_logo_fit "$text" "$width")
+    padding=$(( width - ${#fitted} ))
+    (( padding < 0 )) && padding=0
+    printf -v spaces '%*s' "$padding" ""
+    printf '%b%s%s%b' "$color" "$fitted" "$spaces" "$RESET"
+}
+
+# Imprime una fila de la caja con el contenido ya formateado
+_logo_row() {
+    printf '%b│%b %s %b│%b\n' "$AZUL" "$RESET" "$1" "$AZUL" "$RESET"
+}
+
+# Degradado de color para la cabecera; `base` desplaza la paleta en cada dibujado
+_logo_gradient() {
+    local text="$1" base="$2"
+    local i char color out=""
+    local total=${#_LOGO_ACCENTS[@]}
+    for ((i = 0; i < ${#text}; i++)); do
+        char="${text:i:1}"
+        color="${_LOGO_ACCENTS[$(( (base + i / 8) % total ))]}"
+        out+="${color}${char}"
+    done
+    printf '%s%b' "$out" "$RESET"
+}
+
+# Fila de dos columnas: etiqueta + valor a cada lado
+_logo_pair() {
+    local label1="$1" value1="$2" label2="$3" value2="$4"
+    _logo_row "$(_logo_cell "$label1" 12 "$AZUL") ${value1} $(_logo_cell "$label2" 12 "$AZUL") ${value2}"
+}
+
+# Repinta solo la fila del título (fila 2) sin tocar el resto de la pantalla.
+# Se escribe en /dev/tty para no interferir con la salida del menú.
+_logo_title_redraw() {
+    local base="$1"
+    printf '\033[s\033[2;1H%b│%b %s %b│%b\033[K\033[u' \
+        "$AZUL" "$RESET" "$(_logo_gradient "${_LOGO_TITLE_TEXT:-}" "$base")" \
+        "$AZUL" "$RESET" > /dev/tty
+}
+
+# Arranca el cambio de color automático de la cabecera (cada 5 segundos)
+_logo_animate_start() {
+    [[ -n "${_LOGO_TITLE_TEXT:-}" ]] || return 0
+    [[ -w /dev/tty ]] || return 0
+    _logo_animate_stop
+
+    local parent="$BASHPID"
+    (
+        local base=$(( ${_LOGO_COLOR_IDX:-0} + 1 ))
+        local tick
+        # Comprueba cada 200 ms que el menú siga vivo; repinta cada 5 s
+        while kill -0 "$parent" 2>/dev/null; do
+            for ((tick = 0; tick < 25; tick++)); do
+                kill -0 "$parent" 2>/dev/null || exit 0
+                sleep 0.2
+            done
+            _logo_title_redraw "$base" 2>/dev/null
+            base=$(( base + 1 ))
+        done
+    ) &
+    _LOGO_ANIM_PID=$!
+}
+
+# Detiene la animación del logo
+_logo_animate_stop() {
+    [[ -n "${_LOGO_ANIM_PID:-}" ]] || return 0
+    kill "$_LOGO_ANIM_PID" 2>/dev/null
+    _LOGO_ANIM_PID=""
+}
+
+# fzf con la animación del logo activa mientras el menú está abierto
+_logo_fzf() {
+    _logo_animate_start
+    fzf "$@"
+    local rc=$?
+    _logo_animate_stop
+    return "$rc"
+}
+
 function mostrar_logo() {
     clear
-    echo -e "${CYAN}"
-    echo "      █████╗ ██╗      ██╗      ██╗  ██╗███╗   ███╗███████╗"
-    echo "     ██╔══██╗██║      ██║      ██║  ██║████╗ ████║██╔════╝"
-    echo -e "${VERDE}"
-    echo "     ███████║██║      ██║      ███████║██╔████╔██║█████╗  "
-    echo "     ██╔══██║██║      ██║      ╚════██║██║╚██╔╝██║██╔══╝  "
-    echo -e "${MAGENTA}"
-    echo "     ██║  ██║███████╗███████╗      ██║██║ ╚═╝ ██║███████╗"
-    echo "     ╚═╝  ╚═╝╚══════╝╚══════╝      ╚═╝╚═╝     ╚═╝╚══════╝"
-    echo ""
-    echo -e "${BLANCO}              ░▒▓ ALL  4  M E ▓▒░ --[ V 6.9 ]--"
-    echo -e "${AZUL}--[ Escaneo Interactivo de Red con multiherramientas ]--${RESET}"
-    echo -e "${BLANCO}--===============================================================${RESET}"
-    echo -e "${BLANCO}--[ Auto-install + Auto-scan + Nuclei + Gobuster + Nmap + ]--${RESET}"
-    echo -e "${BLANCO}--[ Feroxbuster + SectList + Wpscan + OSINT + scan4windows]--${RESET}"
-    echo -e "${BLANCO}--[ Nuevas funciones CUSTOM en Nmap y Feroxbuster ]--${RESET}"
-    echo "" 
+
+    local version="6.9"
+
+    # Tamaño real de la ventana; COLUMNS/LINES pueden no llegar bajo sudo
+    local lines="${LINES:-}"
+    [[ "$lines" =~ ^[0-9]+$ ]] || lines=$(tput lines 2>/dev/null || echo 24)
+    [[ "$lines" =~ ^[0-9]+$ ]] || lines=24
+    (( lines < 1 )) && lines=24
+
+    # Ancho adaptable: crece en terminales anchas y nunca baja de 72 columnas
+    local cols="${COLUMNS:-}"
+    [[ "$cols" =~ ^[0-9]+$ ]] || cols=$(tput cols 2>/dev/null || echo 80)
+    [[ "$cols" =~ ^[0-9]+$ ]] || cols=80
+    (( cols < 1 )) && cols=80
+    local total_width=$(( cols - 2 ))
+    (( total_width > 96 )) && total_width=96
+    (( total_width < 72 )) && total_width=72
+    local content_width=$(( total_width - 4 ))
+    local value2_width=21
+    local value1_width=$(( content_width - 12 - 12 - value2_width - 3 ))
+
+    # Datos de red cacheados en la primera llamada para no repetir subprocesos
+    if [[ -z "${_LOGO_LOCAL_IP:-}" ]]; then
+        _LOGO_LOCAL_IFACE=$(ip route get 1.1.1.1 2>/dev/null \
+            | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')
+        _LOGO_LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+        if [[ -z "$_LOGO_LOCAL_IP" ]]; then
+            _LOGO_LOCAL_IP=$(ip -o -4 addr show scope global 2>/dev/null \
+                | awk 'NR==1{split($4,a,"/"); print a[1]; exit}')
+        fi
+        [[ -z "$_LOGO_LOCAL_IFACE" ]] && _LOGO_LOCAL_IFACE="n/a"
+        [[ -z "$_LOGO_LOCAL_IP" ]] && _LOGO_LOCAL_IP="n/a"
+    fi
+
+    local tools_total=${#dependencies[@]}
+    local tools_ready=-1
+    declare -p missing_tools &>/dev/null && tools_ready=$(( tools_total - ${#missing_tools[@]} ))
+    local tools_txt="—/—"
+    (( tools_ready >= 0 )) && tools_txt="$tools_ready/$tools_total"
+    local tools_color="$AMARILLO"
+    (( tools_ready == tools_total )) && tools_color="$VERDE"
+
+    local txt_state="${txt_status:-OFF}"
+    local xml_state="${xml_status:-OFF}"
+    local txt_color="$VERDE"
+    [[ "$txt_state" == "OFF" ]] && txt_color="$ROJO"
+    local xml_color="$VERDE"
+    [[ "$xml_state" == "OFF" ]] && xml_color="$ROJO"
+
+    local seclists_txt="detectando…"
+    local seclists_color="$AMARILLO"
+    if [[ -n "${wordlist:-}" ]]; then
+        seclists_txt="OK · ${wordlist##*/}"
+        seclists_color="$VERDE"
+    elif [[ -n "${wordlist+x}" ]]; then
+        seclists_txt="NO detectado"
+        seclists_color="$ROJO"
+    fi
+
+    local equipo=""
+    [[ "$_LOGO_LOCAL_IFACE" != "n/a" ]] && equipo="$_LOGO_LOCAL_IFACE"
+    [[ "$_LOGO_LOCAL_IP" != "n/a" ]] && equipo+="${equipo:+ · }$_LOGO_LOCAL_IP"
+    [[ -z "$equipo" ]] && equipo="n/a"
+
+    local sesion
+    printf -v sesion '%02d:%02d:%02d' $(( SECONDS / 3600 )) $(( SECONDS % 3600 / 60 )) $(( SECONDS % 60 ))
+
+    local target_txt="${target:-detectando…}"
+
+    local reportes_value
+    reportes_value="$(_logo_cell "TXT [${txt_state}]" 9 "$txt_color")  $(_logo_cell "XML [${xml_state}]" 9 "$xml_color")"
+    local rep_pad=$(( value1_width - 20 ))
+    (( rep_pad < 0 )) && rep_pad=0
+    reportes_value+="$(printf '%*s' "$rep_pad" "")"
+
+    local hr
+    printf -v hr '%*s' "$(( total_width - 2 ))" ""
+    hr=${hr// /─}
+
+    # La cabecera cambia de tono en cada redibujado y, con el menú abierto,
+    # la animación de _logo_animate_start la desplaza cada 5 segundos
+    _LOGO_COLOR_IDX=$(( ${_LOGO_COLOR_IDX:-0} + 1 ))
+    local color_base=$(( _LOGO_COLOR_IDX % ${#_LOGO_ACCENTS[@]} ))
+    local accent="${_LOGO_ACCENTS[$color_base]}"
+
+    printf '%b╭%s╮%b\n' "$accent" "$hr" "$RESET"
+
+    local top_left="  ░▒▓ SCAN4ME ▓▒░   $(date '+%d-%m-%Y %H:%M')   v${version}"
+    local top_fill=$(( content_width - ${#top_left} - 1 ))
+    (( top_fill < 0 )) && top_fill=0
+    local top_rule
+    printf -v top_rule '%*s' "$top_fill" ""
+    top_rule=${top_rule// /─}
+
+    # Texto de la fila 2; la animación lo reutiliza para cambiar solo el color
+    _LOGO_TITLE_TEXT="${top_left} ${top_rule}"
+    _logo_row "$(_logo_gradient "$_LOGO_TITLE_TEXT" "$color_base")"
+
+    _logo_row "$(_logo_cell "[!] Solo auditorías autorizadas. Uso indebido: tu responsabilidad." "$content_width" "$AMARILLO")"
+    printf '%b├%s┤%b\n' "$accent" "$hr" "$RESET"
+
+    _logo_pair "REPORTES" "$reportes_value" "HERRAMIENTAS" "$(_logo_cell "$tools_txt" "$value2_width" "$tools_color")"
+    _logo_pair "OBJETIVO" "$(_logo_cell "$target_txt" "$value1_width" "$BLANCO")" "MI RED" "$(_logo_cell "$equipo" "$value2_width" "$BLANCO")"
+    _logo_pair "SECLISTS" "$(_logo_cell "$seclists_txt" "$value1_width" "$seclists_color")" "SESIÓN" "$(_logo_cell "$sesion" "$value2_width" "$BLANCO")"
+
+    if (( lines >= 14 )); then
+        printf '%b├%s┤%b\n' "$AZUL" "$hr" "$RESET"
+        _logo_row "$(_logo_cell "↑↓ mover · Enter seleccionar · Ctrl+C volver · x salir" "$content_width" "$AMARILLO")"
+    fi
+
+    printf '%b╰%s╯%b\n\n' "$AZUL" "$hr" "$RESET"
 }
 
 function output_txt() {
@@ -768,6 +977,9 @@ check_dependencies() {
 }
 # --- FLUJO PRINCIPAL DE DEPENDENCIAS ---
 check_dependencies
+
+# Render inicial: muestra el logo en cuanto se abre la ventana
+mostrar_logo
 
 if [ ${#missing_tools[@]} -gt 0 ]; then
     echo -e "${ROJO}❌ No se han podido encontrar estas herramientas: ${missing_tools[*]}${RESET}"
@@ -994,14 +1206,7 @@ NUCLEI_BIN=$(command -v nuclei || echo "/usr/bin/nuclei")
 # BUCLE DEL MENÚ INTERACTIVO
 while true; do
     mostrar_logo
-    xml_color="${ROJO}"
-    [[ "$xml_status" == "ON" ]] && xml_color="${VERDE}"
-    
-    txt_color="${ROJO}"
-    [[ "$txt_status" == "ON" ]] && txt_color="${VERDE}"
-    
-    echo -e "${VERDE}🎯 Objetivo actual: ${BLANCO}$target${RESET} | ${AZUL}XML: ${xml_color}[$xml_status]${RESET} | ${MAGENTA}Guardar TXT: ${txt_color}[$txt_status]${RESET}\n"
-    
+
     options=(
         "x   [CAMBIAR MODO GUARDADO TXT]        | Estado actual: $txt_status"
         "x   [CAMBIAR MODO CONFIG XML]          | Estado actual: $xml_status"
@@ -1017,7 +1222,7 @@ while true; do
         "x.            -- SALIR --              | exit"
     )
 
-    selection=$(printf "%s\n" "${options[@]}" | fzf --prompt="🔍 Selecciona el tipo de acción: " --height=18% --layout=reverse --border)
+    selection=$(printf "%s\n" "${options[@]}" | _logo_fzf --prompt="🔍 Selecciona el tipo de acción: " --height=18% --layout=reverse --border)
     
     if [ -z "$selection" ]; then
         despedida
@@ -1196,7 +1401,7 @@ while true; do
 
         while true; do
             mostrar_logo  # Limpia la pantalla y redibuja tu banner superior
-            echo -e "${VERDE}🎯 Objetivo actual: ${BLANCO}$target${RESET} | ${AZUL}XML: ${xml_color}[$xml_status]${RESET} | ${MAGENTA}Guardar TXT: ${txt_color}[$txt_status]${RESET}\n"
+
             
             # Formateamos el target para que Nuclei siempre reciba un formato URL válido (http/https)
             url_nuclei="$target"
@@ -1213,7 +1418,7 @@ while true; do
                 "x.  -- Volver al menú principal...                        | back"
             )
 
-            sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="☢️ Perfiles de Nuclei: " --height=25% --layout=reverse --border)
+            sub_selection=$(printf "%s\n" "${sub_options[@]}" | _logo_fzf --prompt="☢️ Perfiles de Nuclei: " --height=25% --layout=reverse --border)
 
             # Control de salida rápido con un solo Ctrl+C o ESC
             if [ -z "$sub_selection" ]; then
@@ -1284,7 +1489,7 @@ while true; do
     if [[ "$selection" == *"Nmap, otras opciones (Submenú)"* ]]; then
         while true; do
             mostrar_logo
-            echo -e "${VERDE}🎯 Objetivo actual: ${BLANCO}$target${RESET} | ${AZUL}XML: ${xml_color}[$xml_status]${RESET} | ${MAGENTA}Guardar TXT: ${txt_color}[$txt_status]${RESET}\n"
+
             sub_options=(
                 "1.  [TCP] Reconocimiento Rápido OS           | -sS -O -Pn -n -vvv -T4"
                 "2.  [TCP] Escaneo de Puertos Totales (p-)    | -sS -p- -Pn -n --min-rate 5000"
@@ -1302,7 +1507,7 @@ while true; do
             )
             
             # Usamos una variable separada (sub_selection) para no pisar la lógica global
-            sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="🛠 Opciones de Nmap: " --height=25% --layout=reverse --border)
+            sub_selection=$(printf "%s\n" "${sub_options[@]}" | _logo_fzf --prompt="🛠 Opciones de Nmap: " --height=25% --layout=reverse --border)
             
             [[ -z "$sub_selection" ]] && break
             [[ "$sub_selection" == *"Volver"* ]] && break
@@ -1351,7 +1556,7 @@ while true; do
                 prompt_text="Selecciona opciones con [TAB] y presiona [ENTER] para ejecutar sobre $target: "
 
                 # Ejecutamos fzf con la opción --multi y la altura adaptada al menú
-                sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="$prompt_text" --height=40% --layout=reverse --border --multi)
+                sub_selection=$(printf "%s\n" "${sub_options[@]}" | _logo_fzf --prompt="$prompt_text" --height=40% --layout=reverse --border --multi)
 
                 [[ -z "$sub_selection" ]] && continue
                 [[ "$sub_selection" == *"Volver"* ]] && continue
@@ -1462,7 +1667,7 @@ while true; do
     if [[ "$selection" == *"Feroxbuster"* ]]; then
         while true; do
             mostrar_logo
-            echo -e "${VERDE}🎯 Objetivo actual: ${BLANCO}$target${RESET} | ${AZUL}XML: ${xml_color}[$xml_status]${RESET} | ${MAGENTA}Guardar TXT: ${txt_color}[$txt_status]${RESET}\n"
+
             
             if [ -z "$wordlist" ]; then
                 echo -e "${ROJO}❌ Error: No puedes usar Feroxbuster sin el diccionario SecLists.${RESET}"
@@ -1489,7 +1694,7 @@ while true; do
                 "x.  << Volver al menú principal                                  | back"
             )
             
-            sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="🌐 Perfiles Avanzados de Feroxbuster: " --height=25% --layout=reverse --border)
+            sub_selection=$(printf "%s\n" "${sub_options[@]}" | _logo_fzf --prompt="🌐 Perfiles Avanzados de Feroxbuster: " --height=25% --layout=reverse --border)
             
             [[ -z "$sub_selection" ]] && break
             [[ "$sub_selection" == *"Volver"* || "$sub_selection" == *"back"* ]] && break
@@ -1521,7 +1726,7 @@ while true; do
                 fi
                           
                 ext_opts=( "php" "html" "txt" "js" "bak" "zip" "tar.gz" "sql" "swp" "asp" "aspx" "config" "jsp" "do" "action" "sh" "cgi" "pl" "py" )
-                sel_ext=$(printf "%s\n" "${ext_opts[@]}" | fzf -m --prompt="🧩 2/4 - Multi-Selección de extensiones con TAB (ENTER=Aceptar): " --layout=reverse --height=25% --border)
+                sel_ext=$(printf "%s\n" "${ext_opts[@]}" | _logo_fzf -m --prompt="🧩 2/4 - Multi-Selección de extensiones con TAB (ENTER=Aceptar): " --layout=reverse --height=25% --border)
                 
                 if [[ -z "$sel_ext" ]]; then 
                     custom_ext=""
@@ -1530,12 +1735,12 @@ while true; do
                 fi
 
                 thread_opts=("10 (Lento/Seguro)" "50 (Equilibrado)" "100 (Agresivo)" "200 (Modo Dios)")
-                sel_threads=$(printf "%s\n" "${thread_opts[@]}" | fzf --prompt="⚡ 3/4 - Selecciona Hilos: " --layout=reverse --height=12% --border)
+                sel_threads=$(printf "%s\n" "${thread_opts[@]}" | _logo_fzf --prompt="⚡ 3/4 - Selecciona Hilos: " --layout=reverse --height=12% --border)
                 custom_threads=$(echo "$sel_threads" | awk '{print $1}')
                 [[ -z "$custom_threads" ]] && custom_threads="50"
 
                 rec_opts=("No Recursivo (--no-recursion)" "Recursividad Nivel 2 (--depth 2)" "Recursividad Nivel 3 (--depth 3)")
-                sel_rec=$(printf "%s\n" "${rec_opts[@]}" | fzf --prompt="📁 4/4 - Profundidad / Recursividad: " --layout=reverse --height=10% --border)
+                sel_rec=$(printf "%s\n" "${rec_opts[@]}" | _logo_fzf --prompt="📁 4/4 - Profundidad / Recursividad: " --layout=reverse --height=10% --border)
                 if [[ "$sel_rec" == *"No"* || -z "$sel_rec" ]]; then 
                     custom_rec="--no-recursion"
                 elif [[ "$sel_rec" == *"Nivel 2"* ]]; then 
@@ -1619,7 +1824,7 @@ while true; do
     if [[ "$selection" == *"windows"* ]]; then
         while true; do
             mostrar_logo
-            echo -e "${VERDE}🎯 Objetivo actual: ${BLANCO}$target${RESET} | ${AZUL}XML: ${xml_color}[$xml_status]${RESET} | ${MAGENTA}Guardar TXT: ${txt_color}[$txt_status]${RESET}\n"
+
             sub_options=(
                 "1.  [Nmap] Enumeración SMB Básica (Carpetas/OS)   | nmap --script smb-os-discovery,smb-enum-shares -p 139,445 -Pn"
                 "2.  [Nmap] Enumeración NetBIOS (UDP 137)          | nmap -sU -p 137 --script nbstat -Pn"
@@ -1630,7 +1835,7 @@ while true; do
                 "x.  << Volver al menú principal                   | back"
             )
             
-            sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="🪟 Opciones específicas para Windows: " --height=25% --layout=reverse --border)
+            sub_selection=$(printf "%s\n" "${sub_options[@]}" | _logo_fzf --prompt="🪟 Opciones específicas para Windows: " --height=25% --layout=reverse --border)
             
             [[ -z "$sub_selection" ]] && break
             [[ "$sub_selection" == *"Volver"* ]] && break
@@ -1688,7 +1893,7 @@ while true; do
     if [[ "$selection" == *"footprinting"* ]]; then
         while true; do
             mostrar_logo
-            echo -e "${VERDE}🎯 Objetivo actual: ${BLANCO}$target${RESET} | ${AZUL}XML: ${xml_color}[$xml_status]${RESET} | ${MAGENTA}Guardar TXT: ${txt_color}[$txt_status]${RESET}\n"
+
         # 1. Limpieza estricta para herramientas de dominio (WHOIS, DNSRecon, Sublist3r, Subfinder)
         dominio_limpio="${target#*://}"
         dominio_limpio="${dominio_limpio#www.}" 
@@ -1734,7 +1939,7 @@ while true; do
                 prompt_text="🕵️ OSINT (Modo Dominio): "
             fi
             
-            sub_selection=$(printf "%s\n" "${sub_options[@]}" | fzf --prompt="$prompt_text" --height=25% --layout=reverse --border)
+            sub_selection=$(printf "%s\n" "${sub_options[@]}" | _logo_fzf --prompt="$prompt_text" --height=25% --layout=reverse --border)
             
             [[ -z "$sub_selection" ]] && break
             [[ "$sub_selection" == *"Volver"* ]] && break
