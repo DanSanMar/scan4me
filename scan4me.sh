@@ -774,8 +774,7 @@ _logo_fzf() {
 
 function mostrar_logo() {
     clear
-    # Cada redibujado del menú empieza sin interrupción pendiente
-    _INTERRUMPIDO=0
+    # El contador de interrupciones persiste entre redibujados del menú
 
     local version="7.0"
 
@@ -905,7 +904,7 @@ function despedida() {
         --prompt="⚠️ ¿Seguro que deseas salir del script? " \
         --height=10% --layout=reverse --border)
 
-    # Solo se sale si se elige "Sí"; "No" o Ctrl+C/ESC cancelan la salida
+    # Solo se sale si se elige "Sí"; Ctrl+C/ESC cancela y vuelve al menú
     if [[ "$confirmar" == *"Sí"* ]]; then
         echo -e "\n"
         echo -e "${AZUL}%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%${RESET}"
@@ -918,22 +917,27 @@ function despedida() {
     fi
 }
 
-# Bandera global: marca que el usuario interrumpió la acción en curso
+# Contador de interrupciones (trap SIGINT + cancelaciones de fzf)
 _INTERRUMPIDO=0
 
-# Nueva función para manejar el Ctrl+C sin cerrar el script
+# Maneja el Ctrl+C real (reads y comandos externos): solo cuenta y avisa.
+# La decisión de salir se toma en el bucle principal, que también cuenta las
+# cancelaciones de fzf (ahí SIGINT no llega porque fzf usa modo raw).
 function interrupcion() {
-    _INTERRUMPIDO=1
+    _INTERRUMPIDO=$(( _INTERRUMPIDO + 1 ))
+    
     # Se escribe en /dev/tty para no contaminar las capturas de fzf
     if [[ -w /dev/tty ]]; then
         printf '\n%b⚠️ Acción cancelada por el usuario.%b\n' "$ROJO" "$RESET" > /dev/tty
+        if (( _INTERRUMPIDO == 1 )); then
+            printf '%b💡 Pulsa Ctrl+C de nuevo para salir.%b\n' "$AMARILLO" "$RESET" > /dev/tty
+        fi
     fi
-    # Al no poner 'exit', Bash continuará con el bucle 'while true' principal
 }
 
-# Devuelve 0 si la acción en curso fue interrumpida con Ctrl+C
+# Devuelve 0 si ha sido interrumpido al menos una vez
 _interrumpido() {
-    [[ "${_INTERRUMPIDO:-0}" == "1" ]]
+    (( _INTERRUMPIDO >= 1 ))
 }
 
 # Devuelve 0 si hay que cortar la acción en curso (el aviso ya lo muestra el trap)
@@ -1222,6 +1226,13 @@ NUCLEI_BIN=$(command -v nuclei || echo "/usr/bin/nuclei")
 
 # BUCLE DEL MENÚ INTERACTIVO
 while true; do
+    # Dos interrupciones acumuladas (trap o cancelaciones de fzf) piden
+    # confirmación de salida; una sola solo redibuja el menú.
+    if (( _INTERRUMPIDO >= 2 )); then
+        despedida
+        _INTERRUMPIDO=0
+    fi
+
     mostrar_logo
 
     options=(
@@ -1240,6 +1251,16 @@ while true; do
     )
 
     selection=$(printf "%s\n" "${options[@]}" | _logo_fzf --prompt="🔍 Selecciona el tipo de acción: " --height=18% --layout=reverse --border)
+    rc=$?
+    
+    # fzf usa el terminal en modo raw: Ctrl+C/ESC no generan SIGINT y el trap
+    # nunca se dispara. Contamos aquí la cancelación (rc=130); a la segunda se
+    # ofrece la confirmación de salida desde el inicio del bucle.
+    if (( rc == 130 )); then
+        _INTERRUMPIDO=$(( _INTERRUMPIDO + 1 ))
+    elif (( rc == 0 )); then
+        _INTERRUMPIDO=0
+    fi
     
     # Ctrl+C / ESC cancelan la selección y redibujan el menú (no salen)
     if [ -z "$selection" ]; then
