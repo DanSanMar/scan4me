@@ -11,6 +11,8 @@ results/
 A_*/
 
 # --- Archivos del Sistema y Editores ---
+# Instrucciones locales para agentes (no se publican)
+AGENTS.md
 .DS_Store
 Thumbs.db
 .vscode/
