@@ -774,7 +774,7 @@ _logo_fzf() {
 function mostrar_logo() {
     clear
 
-    local version="6.9"
+    local version="7.0"
 
     # Tamaño real de la ventana; COLUMNS/LINES pueden no llegar bajo sudo
     local lines="${LINES:-}"

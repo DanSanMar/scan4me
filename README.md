@@ -1,4 +1,4 @@
-# 🔍 Scan4Me v6.2- ALL4ME
+# 🔍 SCAN4ME v7.0
 
 Scan4Me es una herramienta de auditoría y reconocimiento de red interactiva avanzada escrita en Bash. Diseñada para *pentesters* y administradores de sistemas, centraliza múltiples herramientas de seguridad en una interfaz de menú intuitiva potenciada por `fzf`, incluyendo un sistema inteligente de instalación y detección automática de dependencias.
 
