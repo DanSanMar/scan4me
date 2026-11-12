@@ -7,6 +7,8 @@ results/
 *.gnmap
 *.txt
 *.log
+# Carpetas de auditoría generadas por scan4me: A_<objetivo>_<fecha>/
+A_*/
 
 # --- Archivos del Sistema y Editores ---
 .DS_Store
